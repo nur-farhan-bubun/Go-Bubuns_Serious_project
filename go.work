@@ -1,0 +1,10 @@
+go 1.25.0
+
+use (
+	./api-gateway
+	./user-service
+	./match-service
+	./chat-service
+	./location-service
+	./shared
+)

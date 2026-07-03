@@ -1,0 +1,112 @@
+version: "3.9"
+
+services:
+  api-gateway:
+    build:
+      context: ./api-gateway
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      PORT: "8080"
+      USER_SERVICE_URL: "http://user-service:8081"
+      MATCH_SERVICE_URL: "http://match-service:8082"
+      CHAT_SERVICE_URL: "http://chat-service:8083"
+      LOCATION_SERVICE_URL: "http://location-service:8084"
+    depends_on:
+      - user-service
+      - match-service
+      - chat-service
+      - location-service
+
+  user-service:
+    build:
+      context: ./user-service
+      dockerfile: Dockerfile
+    ports:
+      - "8081:8081"
+    environment:
+      PORT: "8081"
+      DATABASE_URL: "postgres://postgres:postgres@user-db:5432/users?sslmode=disable"
+    depends_on:
+      user-db:
+        condition: service_healthy
+
+  match-service:
+    build:
+      context: ./match-service
+      dockerfile: Dockerfile
+    ports:
+      - "8082:8082"
+    environment:
+      PORT: "8082"
+      DATABASE_URL: "postgres://postgres:postgres@match-db:5432/matches?sslmode=disable"
+      USER_SERVICE_URL: "http://user-service:8081"
+    depends_on:
+      match-db:
+        condition: service_healthy
+
+  chat-service:
+    build:
+      context: ./chat-service
+      dockerfile: Dockerfile
+    ports:
+      - "8083:8083"
+    environment:
+      PORT: "8083"
+      SCYLLA_URL: "scylladb://chat-db:9042/chat"
+      REDIS_URL: "redis:6379"
+    depends_on:
+      - chat-db
+      - redis
+
+  location-service:
+    build:
+      context: ./location-service
+      dockerfile: Dockerfile
+    ports:
+      - "8084:8084"
+    environment:
+      PORT: "8084"
+      REDIS_URL: "redis:6379"
+    depends_on:
+      - redis
+
+  # Infrastructure
+  user-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: users
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  match-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: matches
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  chat-db:
+    image: scylladb/scylla:5.4
+    ports:
+      - "9042:9042"
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"

@@ -1,0 +1,13 @@
+FROM golang:1.23-alpine AS builder
+
+WORKDIR /app
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 go build -o /user-service ./cmd/api
+
+FROM alpine:3.19
+RUN apk add --no-cache ca-certificates
+COPY --from=builder /user-service /user-service
+EXPOSE 8081
+CMD ["/user-service"]
