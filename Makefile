@@ -72,16 +72,56 @@ tidy-shared:
 
 # ─── Migration ──────────────────────────────────────────────────────────────
 
-.PHONY: migrate-user migrate-match migrate-chat
+USER_DB_URL  := postgres://postgres:postgres@localhost:5432/users?sslmode=disable
+MATCH_DB_URL := postgres://postgres:postgres@localhost:5433/matches?sslmode=disable
+
+export PATH := $(shell go env GOPATH)/bin:$(PATH)
+
+.PHONY: migrate-up migrate-down migrate-status
+.PHONY: migrate-user migrate-user-down
+.PHONY: migrate-match migrate-match-down
+.PHONY: migrate-chat migrate-chat-down
+
+migrate-up: migrate-user migrate-match migrate-chat
+	@echo "✓ All migrations applied"
+
+migrate-down: migrate-chat-down migrate-match-down migrate-user-down
+	@echo "✓ All migrations rolled back"
+
+migrate-status:
+	@echo "── user-db ──"
+	@migrate -path user-service/migrations -database "$(USER_DB_URL)" version 2>/dev/null || echo "(no migrations applied)"
+	@echo "── match-db ──"
+	@migrate -path match-service/migrations -database "$(MATCH_DB_URL)" version 2>/dev/null || echo "(no migrations applied)"
+	@echo "── chat-db (ScyllaDB) ──"
+	@echo "(check with: cqlsh localhost 9042 -e \"SELECT * FROM system_schema_migrations;\")"
+
+# PostgreSQL services
 
 migrate-user:
-	@echo "Run: migrate -path user-service/migrations -database \$$DATABASE_URL up"
+	@echo "▸ Migrating user-db..."
+	@migrate -path user-service/migrations -database "$(USER_DB_URL)" up
+
+migrate-user-down:
+	@echo "▸ Rolling back user-db..."
+	@migrate -path user-service/migrations -database "$(USER_DB_URL)" down 1
 
 migrate-match:
-	@echo "Run: migrate -path match-service/migrations -database \$$DATABASE_URL up"
+	@echo "▸ Migrating match-db..."
+	@migrate -path match-service/migrations -database "$(MATCH_DB_URL)" up
+
+migrate-match-down:
+	@echo "▸ Rolling back match-db..."
+	@migrate -path match-service/migrations -database "$(MATCH_DB_URL)" down 1
+
+# ScyllaDB service
 
 migrate-chat:
-	@echo "Run: cqlsh -f chat-service/migrations/001_chat.up.sql"
+	@echo "▸ Migrating chat-db (ScyllaDB)..."
+	@cat chat-service/migrations/001_chat.up.sql | docker compose exec -T chat-db cqlsh
+
+migrate-chat-down:
+	@echo "▸ chat-db: no down migration for ScyllaDB (drop keyspace manually if needed)"
 
 # ─── Lint / Vet ─────────────────────────────────────────────────────────────
 

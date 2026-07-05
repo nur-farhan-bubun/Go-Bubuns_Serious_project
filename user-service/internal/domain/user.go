@@ -22,14 +22,32 @@ type CreateUserRequest struct {
 	PhotoURLs []string `json:"photo_urls"`
 }
 
-// CreateUserResponse is the response body after creating a user.
-type CreateUserResponse struct {
+// UserResponse is a consistent response body for user operations.
+type UserResponse struct {
 	ID        string   `json:"id"`
 	Email     string   `json:"email"`
 	Name      string   `json:"name"`
 	Bio       string   `json:"bio"`
+	AvatarURL string   `json:"avatar_url"`
 	PhotoURLs []string `json:"photo_urls"`
 	CreatedAt string   `json:"created_at"`
+	UpdatedAt string   `json:"updated_at"`
+}
+
+// DeleteUserResponse is returned after deleting a user.
+type DeleteUserResponse struct {
+	ID        string `json:"id"`
+	Email     string `json:"email"`
+	Name      string `json:"name"`
+	Message   string `json:"message"`
+}
+
+// ListUsersResponse is returned by the list endpoint.
+type ListUsersResponse struct {
+	Users []*UserResponse `json:"users"`
+	Total int             `json:"total"`
+	Page  int             `json:"page"`
+	Limit int             `json:"limit"`
 }
 
 // ToUser converts a CreateUserRequest to a User domain model.
@@ -45,15 +63,17 @@ func (r *CreateUserRequest) ToUser(id string, now time.Time) *User {
 	}
 }
 
-// ToCreateResponse converts a User to a CreateUserResponse.
-func (u *User) ToCreateResponse() *CreateUserResponse {
-	return &CreateUserResponse{
+// ToResponse converts a User to a UserResponse.
+func (u *User) ToResponse() *UserResponse {
+	return &UserResponse{
 		ID:        u.ID,
 		Email:     u.Email,
 		Name:      u.Name,
 		Bio:       u.Bio,
+		AvatarURL: u.AvatarURL,
 		PhotoURLs: u.PhotoURLs,
 		CreatedAt: u.CreatedAt.Format(time.RFC3339),
+		UpdatedAt: u.UpdatedAt.Format(time.RFC3339),
 	}
 }
 

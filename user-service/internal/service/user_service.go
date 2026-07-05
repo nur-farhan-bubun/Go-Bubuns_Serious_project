@@ -20,9 +20,9 @@ import (
 type UserRepository interface {
 	GetByID(ctx context.Context, id string) (*domain.User, error)
 	FindByEmail(ctx context.Context, email string) (*domain.User, error)
-	Create(ctx context.Context, user *domain.User) error
+	Create(ctx context.Context, user *domain.User) (*domain.UserResponse, error)
 	Update(ctx context.Context, user *domain.User) error
-	Delete(ctx context.Context, id string) error
+	Delete(ctx context.Context, id string) (*domain.DeleteUserResponse, error)
 	List(ctx context.Context, page, pageSize int) ([]*domain.User, int, error)
 }
 
@@ -56,7 +56,7 @@ func (s *Service) GetByID(ctx context.Context, id string) (*domain.User, error) 
 }
 
 // Create creates a new user.
-func (s *Service) Create(ctx context.Context, user *domain.User) error {
+func (s *Service) Create(ctx context.Context, user *domain.User) (*domain.UserResponse, error) {
 	return s.repo.Create(ctx, user)
 }
 
@@ -65,8 +65,8 @@ func (s *Service) Update(ctx context.Context, user *domain.User) error {
 	return s.repo.Update(ctx, user)
 }
 
-// Delete deletes a user.
-func (s *Service) Delete(ctx context.Context, id string) error {
+// Delete deletes a user and returns the deleted user's data.
+func (s *Service) Delete(ctx context.Context, id string) (*domain.DeleteUserResponse, error) {
 	return s.repo.Delete(ctx, id)
 }
 
@@ -204,7 +204,7 @@ func (s *Service) findOrCreateUser(ctx context.Context, googleUser *domain.Googl
 		UpdatedAt: now,
 	}
 
-	if err := s.repo.Create(ctx, user); err != nil {
+	if _, err := s.repo.Create(ctx, user); err != nil {
 		return nil, err
 	}
 	return user, nil
