@@ -1,0 +1,167 @@
+openapi: "3.0.3"
+info:
+  title: Chat Service API
+  description: Handles conversations, messages, and user presence for the ride-sharing platform.
+  version: "1.0.0"
+paths:
+  /v1/conversations:
+    get:
+      operationId: getConversations
+      summary: Get all conversations for the current user
+      responses:
+        "200":
+          description: List of conversations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Conversation"
+    post:
+      operationId: createConversation
+      summary: Create a new conversation between two users
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateConversationRequest"
+      responses:
+        "201":
+          description: Conversation created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Conversation"
+  /v1/conversations/{id}/messages:
+    get:
+      operationId: getMessages
+      summary: Get messages in a conversation
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: before
+          in: query
+          schema:
+            type: string
+            format: date-time
+      responses:
+        "200":
+          description: List of messages
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Message"
+    post:
+      operationId: sendMessage
+      summary: Send a message in a conversation
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendMessageRequest"
+      responses:
+        "201":
+          description: Message sent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message"
+  /v1/presence/{userID}:
+    get:
+      operationId: getPresence
+      summary: Get a user's online presence status
+      parameters:
+        - name: userID
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Presence status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Presence"
+components:
+  schemas:
+    Conversation:
+      type: object
+      properties:
+        id:
+          type: string
+        user1_id:
+          type: string
+        user2_id:
+          type: string
+        match_id:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+    CreateConversationRequest:
+      type: object
+      properties:
+        user_id:
+          type: string
+        match_id:
+          type: string
+      required:
+        - user_id
+    Message:
+      type: object
+      properties:
+        id:
+          type: string
+        conversation_id:
+          type: string
+        sender_id:
+          type: string
+        content:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+    SendMessageRequest:
+      type: object
+      properties:
+        content:
+          type: string
+      required:
+        - content
+    Presence:
+      type: object
+      properties:
+        user_id:
+          type: string
+        status:
+          type: string
+          enum: [online, offline, away]
+        last_seen:
+          type: string
+          format: date-time
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error

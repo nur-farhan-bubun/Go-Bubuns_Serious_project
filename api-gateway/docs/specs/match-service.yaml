@@ -1,0 +1,116 @@
+openapi: "3.0.3"
+info:
+  title: Match Service API
+  description: Handles user swipes and matching logic for the ride-sharing platform.
+  version: "1.0.0"
+paths:
+  /v1/swipe:
+    post:
+      operationId: swipe
+      summary: Record a swipe action (left or right)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SwipeRequest"
+      responses:
+        "200":
+          description: Swipe recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SwipeResponse"
+  /v1/matches:
+    get:
+      operationId: getMatches
+      summary: Get all matches for the current user
+      responses:
+        "200":
+          description: List of matches
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Match"
+  /v1/discover:
+    get:
+      operationId: getDiscover
+      summary: Get discoverable profiles for swiping
+      responses:
+        "200":
+          description: List of discoverable users
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DiscoverProfile"
+  /v1/internal/matches/{id}:
+    get:
+      operationId: getMatchById
+      summary: Get a match by ID (internal)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Match details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Match"
+components:
+  schemas:
+    SwipeRequest:
+      type: object
+      properties:
+        target_id:
+          type: string
+        direction:
+          type: string
+          enum: [left, right]
+      required:
+        - target_id
+        - direction
+    SwipeResponse:
+      type: object
+      properties:
+        matched:
+          type: boolean
+        match_id:
+          type: string
+    Match:
+      type: object
+      properties:
+        id:
+          type: string
+        user1_id:
+          type: string
+        user2_id:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+    DiscoverProfile:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        avatar_url:
+          type: string
+        bio:
+          type: string
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error

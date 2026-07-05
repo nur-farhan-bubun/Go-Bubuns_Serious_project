@@ -3,6 +3,7 @@ CREATE TABLE IF NOT EXISTS app_users (
     email       TEXT NOT NULL UNIQUE,
     name        TEXT NOT NULL,
     bio         TEXT DEFAULT '',
+    avatar_url  TEXT DEFAULT '',
     photo_urls  TEXT[] DEFAULT '{}',
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
