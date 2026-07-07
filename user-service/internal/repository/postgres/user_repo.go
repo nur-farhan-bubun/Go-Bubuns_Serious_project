@@ -40,26 +40,38 @@ func (r *Repository) Close() {
 	r.pool.Close()
 }
 
+// Pool returns the underlying connection pool for reuse by other repositories.
+func (r *Repository) Pool() *pgxpool.Pool {
+	return r.pool
+}
+
 // ─── Queries ────────────────────────────────────────────────────────────────
 
-const selectColumns = `id, email, name, bio, COALESCE(avatar_url, ''), photo_urls, created_at, updated_at`
+const selectColumns = `id, email, COALESCE(phone, ''), COALESCE(password_hash, ''), role, is_onboarded, created_at, updated_at`
 
 func scanUser(row pgx.Row) (*domain.User, error) {
 	var user domain.User
+	var phone, passwordHash string
 	err := row.Scan(
-		&user.ID, &user.Email, &user.Name, &user.Bio,
-		&user.AvatarURL, &user.PhotoURLs,
+		&user.ID, &user.Email, &phone, &passwordHash,
+		&user.Role, &user.IsOnboarded,
 		&user.CreatedAt, &user.UpdatedAt,
 	)
 	if err != nil {
 		return nil, err
+	}
+	if phone != "" {
+		user.Phone = phone
+	}
+	if passwordHash != "" {
+		user.PasswordHash = passwordHash
 	}
 	return &user, nil
 }
 
 // GetByID retrieves a user by ID.
 func (r *Repository) GetByID(ctx context.Context, id string) (*domain.User, error) {
-	query := `SELECT ` + selectColumns + ` FROM app_users WHERE id = $1`
+	query := `SELECT ` + selectColumns + ` FROM users WHERE id = $1`
 
 	user, err := scanUser(r.pool.QueryRow(ctx, query, id))
 	if err != nil {
@@ -74,7 +86,7 @@ func (r *Repository) GetByID(ctx context.Context, id string) (*domain.User, erro
 // FindByEmail retrieves a user by email.
 // Returns (nil, nil) if not found — that's not an error.
 func (r *Repository) FindByEmail(ctx context.Context, email string) (*domain.User, error) {
-	query := `SELECT ` + selectColumns + ` FROM app_users WHERE email = $1`
+	query := `SELECT ` + selectColumns + ` FROM users WHERE email = $1`
 
 	user, err := scanUser(r.pool.QueryRow(ctx, query, email))
 	if err != nil {
@@ -89,13 +101,13 @@ func (r *Repository) FindByEmail(ctx context.Context, email string) (*domain.Use
 // Create inserts a new user and returns the created response.
 func (r *Repository) Create(ctx context.Context, user *domain.User) (*domain.UserResponse, error) {
 	query := `
-		INSERT INTO app_users (id, email, name, bio, avatar_url, photo_urls, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		INSERT INTO users (id, email, phone, role, is_onboarded, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
 	`
 
 	_, err := r.pool.Exec(ctx, query,
-		user.ID, user.Email, user.Name, user.Bio,
-		user.AvatarURL, user.PhotoURLs,
+		user.ID, user.Email, user.Phone,
+		user.Role, user.IsOnboarded,
 		user.CreatedAt, user.UpdatedAt,
 	)
 	if err != nil {
@@ -108,13 +120,13 @@ func (r *Repository) Create(ctx context.Context, user *domain.User) (*domain.Use
 // Update updates an existing user.
 func (r *Repository) Update(ctx context.Context, user *domain.User) error {
 	query := `
-		UPDATE app_users
-		SET name = $1, bio = $2, avatar_url = $3, photo_urls = $4, updated_at = $5
+		UPDATE users
+		SET email = $1, phone = $2, role = $3, is_onboarded = $4, updated_at = $5
 		WHERE id = $6
 	`
 
 	tag, err := r.pool.Exec(ctx, query,
-		user.Name, user.Bio, user.AvatarURL, user.PhotoURLs,
+		user.Email, user.Phone, user.Role, user.IsOnboarded,
 		user.UpdatedAt, user.ID,
 	)
 	if err != nil {
@@ -130,14 +142,13 @@ func (r *Repository) Update(ctx context.Context, user *domain.User) error {
 func (r *Repository) Delete(ctx context.Context, id string) (*domain.DeleteUserResponse, error) {
 	// SQL কোয়েরিতে RETURNING ক্লজ যোগ করা হয়েছে যাতে ডিলিট হওয়া রো-এর ডেটা পাওয়া যায়
 	query := `
-		DELETE FROM app_users 
+		DELETE FROM users 
 		WHERE id = $1 
-		RETURNING id, name, email`
+		RETURNING id, email`
 
 	var response domain.DeleteUserResponse
 
-	// যেহেতু ডেটা স্ক্যান করতে হবে, তাই Exec-এর বদলে QueryRow ব্যবহার করতে হবে
-	err := r.pool.QueryRow(ctx, query, id).Scan(&response.ID, &response.Name, &response.Email)
+	err := r.pool.QueryRow(ctx, query, id).Scan(&response.ID, &response.Email)
 	if err != nil {
 		// যদি ওই ID-র কোনো ইউজার না থাকে, তবে pgx সাধারণত pgx.ErrNoRows রিটার্ন করে
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -156,7 +167,7 @@ func (r *Repository) Delete(ctx context.Context, id string) (*domain.DeleteUserR
 func (r *Repository) List(ctx context.Context, page, pageSize int) ([]*domain.User, int, error) {
 	// Total count
 	var total int
-	err := r.pool.QueryRow(ctx, `SELECT COUNT(*) FROM app_users`).Scan(&total)
+	err := r.pool.QueryRow(ctx, `SELECT COUNT(*) FROM users`).Scan(&total)
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to count users: %w", err)
 	}
@@ -170,7 +181,7 @@ func (r *Repository) List(ctx context.Context, page, pageSize int) ([]*domain.Us
 	}
 	offset := (page - 1) * pageSize
 
-	query := `SELECT ` + selectColumns + ` FROM app_users ORDER BY created_at DESC LIMIT $1 OFFSET $2`
+	query := `SELECT ` + selectColumns + ` FROM users ORDER BY created_at DESC LIMIT $1 OFFSET $2`
 
 	rows, err := r.pool.Query(ctx, query, pageSize, offset)
 	if err != nil {

@@ -13,4 +13,24 @@ type UserService interface {
 	Update(ctx context.Context, user *domain.User) error
 	Delete(ctx context.Context, id string) (*domain.DeleteUserResponse, error)
 	List(ctx context.Context, page, pageSize int) ([]*domain.User, int, error)
+
+	// Universal profile
+	GetProfile(ctx context.Context, userID string) (*domain.Profile, error)
+	UpdateProfile(ctx context.Context, profile *domain.Profile) error
+
+	// Dating profile
+	GetDatingProfile(ctx context.Context, userID string) (*domain.DatingProfile, error)
+	UpdateDatingProfile(ctx context.Context, profile *domain.DatingProfile) error
+	DeleteDatingProfile(ctx context.Context, userID string) error
+
+	// Worker profile
+	GetWorkerProfile(ctx context.Context, userID string) (*domain.WorkerProfile, error)
+	UpdateWorkerProfile(ctx context.Context, profile *domain.WorkerProfile) error
+	DeleteWorkerProfile(ctx context.Context, userID string) error
+
+	// Profile photos
+	ListPhotos(ctx context.Context, userID string) ([]*domain.ProfilePhoto, error)
+	AddPhoto(ctx context.Context, photo *domain.ProfilePhoto) error
+	DeletePhoto(ctx context.Context, photoID string) error
+	SetPrimaryPhoto(ctx context.Context, photoID, userID string) (*domain.ProfilePhoto, error)
 }

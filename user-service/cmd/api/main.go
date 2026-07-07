@@ -27,8 +27,15 @@ func main() {
 	defer repo.Close()
 	logger.Info("connected to database")
 
+	pool := repo.Pool() // reuse the same connection pool for all profile repos
+
+	profileRepo := postgres.NewProfileRepository(pool)
+	datingRepo := postgres.NewDatingProfileRepository(pool)
+	workerRepo := postgres.NewWorkerProfileRepository(pool)
+	photoRepo := postgres.NewProfilePhotoRepository(pool)
+
 	// Services
-	svc := service.New(repo, cfg.GoogleClientID, cfg.GoogleClientSecret, cfg.GoogleRedirectURL, cfg.JWTSecret)
+	svc := service.New(repo, profileRepo, datingRepo, workerRepo, photoRepo, cfg.GoogleClientID, cfg.GoogleClientSecret, cfg.GoogleRedirectURL, cfg.JWTSecret)
 
 	// Echo server
 	e := echo.New()
