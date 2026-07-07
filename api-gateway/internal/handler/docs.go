@@ -84,7 +84,7 @@ func docsLandingPage(c echo.Context) error {
     <a class="card" href="/user-service/"><h2>User Service</h2><span>Auth, profiles, CRUD — port 8081</span></a>
     <a class="card" href="/match-service/"><h2>Match Service</h2><span>Swipes, matches, discover — port 8082</span></a>
     <a class="card" href="/chat-service/"><h2>Chat Service</h2><span>Conversations, messages — port 8083</span></a>
-    <a class="card" href="/location-service/"><h2>Location Service</h2><span>Location, nearby, presence — port 8084</span></a>
+    <a class="card" href="/location-service/"><h2>Location Service</h2><span>Real-time location, WebSocket stream, map pins — port 8084</span></a>
   </div>
 </body>
 </html>`

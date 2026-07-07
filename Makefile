@@ -74,18 +74,20 @@ tidy-shared:
 
 USER_DB_URL  := postgres://postgres:postgres@localhost:5432/users?sslmode=disable
 MATCH_DB_URL := postgres://postgres:postgres@localhost:5433/matches?sslmode=disable
+LOCATION_DB_URL := postgres://postgres:postgres@localhost:5434/locations?sslmode=disable
 
 export PATH := $(shell go env GOPATH)/bin:$(PATH)
 
 .PHONY: migrate-up migrate-down migrate-status
 .PHONY: migrate-user migrate-user-down
 .PHONY: migrate-match migrate-match-down
+.PHONY: migrate-location migrate-location-down
 .PHONY: migrate-chat migrate-chat-down
 
-migrate-up: migrate-user migrate-match migrate-chat
+migrate-up: migrate-user migrate-match migrate-location migrate-chat
 	@echo "✓ All migrations applied"
 
-migrate-down: migrate-chat-down migrate-match-down migrate-user-down
+migrate-down: migrate-chat-down migrate-location-down migrate-match-down migrate-user-down
 	@echo "✓ All migrations rolled back"
 
 migrate-status:
@@ -93,6 +95,8 @@ migrate-status:
 	@migrate -path user-service/migrations -database "$(USER_DB_URL)" version 2>/dev/null || echo "(no migrations applied)"
 	@echo "── match-db ──"
 	@migrate -path match-service/migrations -database "$(MATCH_DB_URL)" version 2>/dev/null || echo "(no migrations applied)"
+	@echo "── location-db ──"
+	@migrate -path location-service/migrations -database "$(LOCATION_DB_URL)" version 2>/dev/null || echo "(no migrations applied)"
 	@echo "── chat-db (ScyllaDB) ──"
 	@echo "(check with: cqlsh localhost 9042 -e \"SELECT * FROM system_schema_migrations;\")"
 
@@ -113,6 +117,14 @@ migrate-match:
 migrate-match-down:
 	@echo "▸ Rolling back match-db..."
 	@migrate -path match-service/migrations -database "$(MATCH_DB_URL)" down 1
+
+migrate-location:
+	@echo "▸ Migrating location-db..."
+	@migrate -path location-service/migrations -database "$(LOCATION_DB_URL)" up
+
+migrate-location-down:
+	@echo "▸ Rolling back location-db..."
+	@migrate -path location-service/migrations -database "$(LOCATION_DB_URL)" down 1
 
 # ScyllaDB service
 

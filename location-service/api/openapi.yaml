@@ -1,13 +1,14 @@
 openapi: "3.0.3"
 info:
   title: Location Service API
-  description: Manages user location data, nearby queries, and online presence.
-  version: "1.0.0"
+  description: Real-time location tracking with PostGIS-backed map pins and WebSocket streaming.
+  version: "2.0.0"
 paths:
+  # ─── Real-time Location ──────────────────────────────────────────────
   /v1/location:
     put:
       operationId: updateLocation
-      summary: Update the current user's location
+      summary: Update the current user's location (also broadcasts to WebSocket subscribers)
       requestBody:
         required: true
         content:
@@ -17,20 +18,46 @@ paths:
       responses:
         "200":
           description: Location updated
-  /v1/location/nearby:
     get:
-      operationId: getNearby
-      summary: Get users nearby a location
+      operationId: getLocation
+      summary: Get the current user's last known location
+      responses:
+        "200":
+          description: Current location
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LocationResponse"
+
+  # ─── Map Posts (PostGIS permanent pins) ──────────────────────────────
+  /v1/posts:
+    post:
+      operationId: createPost
+      summary: Create a new map post (pin with content)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePostRequest"
+      responses:
+        "201":
+          description: Post created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PostResponse"
+    get:
+      operationId: listPosts
+      summary: List map posts, optionally filtered by location and radius
       parameters:
         - name: lat
           in: query
-          required: true
           schema:
             type: number
             format: double
         - name: lng
           in: query
-          required: true
           schema:
             type: number
             format: double
@@ -39,35 +66,85 @@ paths:
           schema:
             type: number
             format: double
-            default: 1000
+            default: 5000
+            description: Search radius in meters
+        - name: category
+          in: query
+          schema:
+            type: string
+            enum: [RESTAURANT, SOCIAL_LIFE, EVENT]
       responses:
         "200":
-          description: List of nearby users
+          description: List of map posts
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: "#/components/schemas/NearbyUser"
-  /v1/presence/online:
-    post:
-      operationId: setOnline
-      summary: Mark the current user as online
+                  $ref: "#/components/schemas/PostResponse"
+  /v1/posts/{postId}:
+    get:
+      operationId: getPost
+      summary: Get a single map post by ID
+      parameters:
+        - name: postId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
       responses:
         "200":
-          description: Presence updated
-  /v1/presence/offline:
-    post:
-      operationId: setOffline
-      summary: Mark the current user as offline
+          description: Post details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PostResponse"
+    put:
+      operationId: updatePost
+      summary: Update a map post (only by the original author)
+      parameters:
+        - name: postId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdatePostRequest"
       responses:
         "200":
-          description: Presence updated
+          description: Post updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PostResponse"
+    delete:
+      operationId: deletePost
+      summary: Delete a map post (only by the original author)
+      parameters:
+        - name: postId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Post deleted
+
 components:
   schemas:
+    # ─── Location ─────────────────────────────────────────────────────
     UpdateLocationRequest:
       type: object
       properties:
+        user_id:
+          type: string
         latitude:
           type: number
           format: double
@@ -75,17 +152,116 @@ components:
           type: number
           format: double
       required:
+        - user_id
         - latitude
         - longitude
-    NearbyUser:
+    LocationResponse:
       type: object
       properties:
         user_id:
           type: string
-        distance:
+        latitude:
           type: number
           format: double
-          description: Distance in meters
+        longitude:
+          type: number
+          format: double
+        updated_at:
+          type: string
+          format: date-time
+      required:
+        - user_id
+        - latitude
+        - longitude
+        - updated_at
+
+    # ─── Map Posts ────────────────────────────────────────────────────
+    CreatePostRequest:
+      type: object
+      properties:
+        user_id:
+          type: string
+        title:
+          type: string
+          maxLength: 255
+        content:
+          type: string
+        category:
+          type: string
+          enum: [RESTAURANT, SOCIAL_LIFE, EVENT]
+        image_urls:
+          type: array
+          items:
+            type: string
+            format: uri
+        latitude:
+          type: number
+          format: double
+        longitude:
+          type: number
+          format: double
+      required:
+        - user_id
+        - title
+        - category
+        - latitude
+        - longitude
+    UpdatePostRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          maxLength: 255
+        content:
+          type: string
+        category:
+          type: string
+          enum: [RESTAURANT, SOCIAL_LIFE, EVENT]
+        image_urls:
+          type: array
+          items:
+            type: string
+            format: uri
+    PostResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+        title:
+          type: string
+        content:
+          type: string
+        category:
+          type: string
+        image_urls:
+          type: array
+          items:
+            type: string
+        latitude:
+          type: number
+          format: double
+        longitude:
+          type: number
+          format: double
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+        - id
+        - user_id
+        - title
+        - category
+        - latitude
+        - longitude
+        - created_at
+        - updated_at
+
     ErrorResponse:
       type: object
       properties:

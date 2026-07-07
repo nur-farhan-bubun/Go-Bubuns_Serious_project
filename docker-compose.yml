@@ -69,8 +69,10 @@ services:
     environment:
       PORT: "8084"
       REDIS_URL: "redis:6379"
+      DATABASE_URL: "postgres://postgres:postgres@location-db:5432/locations?sslmode=disable"
     depends_on:
       - redis
+      - location-db
 
   # Infrastructure
   user-db:
@@ -105,6 +107,20 @@ services:
     image: scylladb/scylla:5.4
     ports:
       - "9042:9042"
+
+  location-db:
+    image: postgis/postgis:16-3.4
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: locations
+    ports:
+      - "5434:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   redis:
     image: redis:7-alpine

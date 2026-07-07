@@ -6,53 +6,187 @@ package api
 import (
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/labstack/echo/v4"
 	"github.com/oapi-codegen/runtime"
+	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
-// NearbyUser defines model for NearbyUser.
-type NearbyUser struct {
-	// Distance Distance in meters
-	Distance *float64 `json:"distance,omitempty"`
-	UserId   *string  `json:"user_id,omitempty"`
+// Defines values for CreatePostRequestCategory.
+const (
+	CreatePostRequestCategoryEVENT      CreatePostRequestCategory = "EVENT"
+	CreatePostRequestCategoryRESTAURANT CreatePostRequestCategory = "RESTAURANT"
+	CreatePostRequestCategorySOCIALLIFE CreatePostRequestCategory = "SOCIAL_LIFE"
+)
+
+// Valid indicates whether the value is a known member of the CreatePostRequestCategory enum.
+func (e CreatePostRequestCategory) Valid() bool {
+	switch e {
+	case CreatePostRequestCategoryEVENT:
+		return true
+	case CreatePostRequestCategoryRESTAURANT:
+		return true
+	case CreatePostRequestCategorySOCIALLIFE:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for UpdatePostRequestCategory.
+const (
+	UpdatePostRequestCategoryEVENT      UpdatePostRequestCategory = "EVENT"
+	UpdatePostRequestCategoryRESTAURANT UpdatePostRequestCategory = "RESTAURANT"
+	UpdatePostRequestCategorySOCIALLIFE UpdatePostRequestCategory = "SOCIAL_LIFE"
+)
+
+// Valid indicates whether the value is a known member of the UpdatePostRequestCategory enum.
+func (e UpdatePostRequestCategory) Valid() bool {
+	switch e {
+	case UpdatePostRequestCategoryEVENT:
+		return true
+	case UpdatePostRequestCategoryRESTAURANT:
+		return true
+	case UpdatePostRequestCategorySOCIALLIFE:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListPostsParamsCategory.
+const (
+	EVENT      ListPostsParamsCategory = "EVENT"
+	RESTAURANT ListPostsParamsCategory = "RESTAURANT"
+	SOCIALLIFE ListPostsParamsCategory = "SOCIAL_LIFE"
+)
+
+// Valid indicates whether the value is a known member of the ListPostsParamsCategory enum.
+func (e ListPostsParamsCategory) Valid() bool {
+	switch e {
+	case EVENT:
+		return true
+	case RESTAURANT:
+		return true
+	case SOCIALLIFE:
+		return true
+	default:
+		return false
+	}
+}
+
+// CreatePostRequest defines model for CreatePostRequest.
+type CreatePostRequest struct {
+	Category  CreatePostRequestCategory `json:"category"`
+	Content   *string                   `json:"content,omitempty"`
+	ImageUrls *[]string                 `json:"image_urls,omitempty"`
+	Latitude  float64                   `json:"latitude"`
+	Longitude float64                   `json:"longitude"`
+	Title     string                    `json:"title"`
+	UserId    string                    `json:"user_id"`
+}
+
+// CreatePostRequestCategory defines model for CreatePostRequest.Category.
+type CreatePostRequestCategory string
+
+// LocationResponse defines model for LocationResponse.
+type LocationResponse struct {
+	Latitude  float64   `json:"latitude"`
+	Longitude float64   `json:"longitude"`
+	UpdatedAt time.Time `json:"updated_at"`
+	UserId    string    `json:"user_id"`
+}
+
+// PostResponse defines model for PostResponse.
+type PostResponse struct {
+	Category  string             `json:"category"`
+	Content   *string            `json:"content,omitempty"`
+	CreatedAt time.Time          `json:"created_at"`
+	Id        openapi_types.UUID `json:"id"`
+	ImageUrls *[]string          `json:"image_urls,omitempty"`
+	Latitude  float64            `json:"latitude"`
+	Longitude float64            `json:"longitude"`
+	Title     string             `json:"title"`
+	UpdatedAt time.Time          `json:"updated_at"`
+	UserId    string             `json:"user_id"`
 }
 
 // UpdateLocationRequest defines model for UpdateLocationRequest.
 type UpdateLocationRequest struct {
 	Latitude  float64 `json:"latitude"`
 	Longitude float64 `json:"longitude"`
+	UserId    string  `json:"user_id"`
 }
 
-// GetNearbyParams defines parameters for GetNearby.
-type GetNearbyParams struct {
-	Lat    float64  `form:"lat" json:"lat"`
-	Lng    float64  `form:"lng" json:"lng"`
-	Radius *float64 `form:"radius,omitempty" json:"radius,omitempty"`
+// UpdatePostRequest defines model for UpdatePostRequest.
+type UpdatePostRequest struct {
+	Category  *UpdatePostRequestCategory `json:"category,omitempty"`
+	Content   *string                    `json:"content,omitempty"`
+	ImageUrls *[]string                  `json:"image_urls,omitempty"`
+	Title     *string                    `json:"title,omitempty"`
 }
+
+// UpdatePostRequestCategory defines model for UpdatePostRequest.Category.
+type UpdatePostRequestCategory string
+
+// ListPostsParams defines parameters for ListPosts.
+type ListPostsParams struct {
+	Lat      *float64                 `form:"lat,omitempty" json:"lat,omitempty"`
+	Lng      *float64                 `form:"lng,omitempty" json:"lng,omitempty"`
+	Radius   *float64                 `form:"radius,omitempty" json:"radius,omitempty"`
+	Category *ListPostsParamsCategory `form:"category,omitempty" json:"category,omitempty"`
+}
+
+// ListPostsParamsCategory defines parameters for ListPosts.
+type ListPostsParamsCategory string
 
 // UpdateLocationJSONRequestBody defines body for UpdateLocation for application/json ContentType.
 type UpdateLocationJSONRequestBody = UpdateLocationRequest
 
+// CreatePostJSONRequestBody defines body for CreatePost for application/json ContentType.
+type CreatePostJSONRequestBody = CreatePostRequest
+
+// UpdatePostJSONRequestBody defines body for UpdatePost for application/json ContentType.
+type UpdatePostJSONRequestBody = UpdatePostRequest
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
-	// Update the current user's location
+	// Get the current user's last known location
+	// (GET /v1/location)
+	GetLocation(ctx echo.Context) error
+	// Update the current user's location (also broadcasts to WebSocket subscribers)
 	// (PUT /v1/location)
 	UpdateLocation(ctx echo.Context) error
-	// Get users nearby a location
-	// (GET /v1/location/nearby)
-	GetNearby(ctx echo.Context, params GetNearbyParams) error
-	// Mark the current user as offline
-	// (POST /v1/presence/offline)
-	SetOffline(ctx echo.Context) error
-	// Mark the current user as online
-	// (POST /v1/presence/online)
-	SetOnline(ctx echo.Context) error
+	// List map posts, optionally filtered by location and radius
+	// (GET /v1/posts)
+	ListPosts(ctx echo.Context, params ListPostsParams) error
+	// Create a new map post (pin with content)
+	// (POST /v1/posts)
+	CreatePost(ctx echo.Context) error
+	// Delete a map post (only by the original author)
+	// (DELETE /v1/posts/{postId})
+	DeletePost(ctx echo.Context, postId openapi_types.UUID) error
+	// Get a single map post by ID
+	// (GET /v1/posts/{postId})
+	GetPost(ctx echo.Context, postId openapi_types.UUID) error
+	// Update a map post (only by the original author)
+	// (PUT /v1/posts/{postId})
+	UpdatePost(ctx echo.Context, postId openapi_types.UUID) error
 }
 
 // ServerInterfaceWrapper converts echo contexts to parameters.
 type ServerInterfaceWrapper struct {
 	Handler ServerInterface
+}
+
+// GetLocation converts echo context to params.
+func (w *ServerInterfaceWrapper) GetLocation(ctx echo.Context) error {
+	var err error
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.GetLocation(ctx)
+	return err
 }
 
 // UpdateLocation converts echo context to params.
@@ -64,22 +198,22 @@ func (w *ServerInterfaceWrapper) UpdateLocation(ctx echo.Context) error {
 	return err
 }
 
-// GetNearby converts echo context to params.
-func (w *ServerInterfaceWrapper) GetNearby(ctx echo.Context) error {
+// ListPosts converts echo context to params.
+func (w *ServerInterfaceWrapper) ListPosts(ctx echo.Context) error {
 	var err error
 
 	// Parameter object where we will unmarshal all parameters from the context
-	var params GetNearbyParams
-	// ------------- Required query parameter "lat" -------------
+	var params ListPostsParams
+	// ------------- Optional query parameter "lat" -------------
 
-	err = runtime.BindQueryParameterWithOptions("form", true, true, "lat", ctx.QueryParams(), &params.Lat, runtime.BindQueryParameterOptions{Type: "number", Format: "double"})
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "lat", ctx.QueryParams(), &params.Lat, runtime.BindQueryParameterOptions{Type: "number", Format: "double"})
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter lat: %s", err))
 	}
 
-	// ------------- Required query parameter "lng" -------------
+	// ------------- Optional query parameter "lng" -------------
 
-	err = runtime.BindQueryParameterWithOptions("form", true, true, "lng", ctx.QueryParams(), &params.Lng, runtime.BindQueryParameterOptions{Type: "number", Format: "double"})
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "lng", ctx.QueryParams(), &params.Lng, runtime.BindQueryParameterOptions{Type: "number", Format: "double"})
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter lng: %s", err))
 	}
@@ -91,26 +225,72 @@ func (w *ServerInterfaceWrapper) GetNearby(ctx echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter radius: %s", err))
 	}
 
+	// ------------- Optional query parameter "category" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "category", ctx.QueryParams(), &params.Category, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter category: %s", err))
+	}
+
 	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.GetNearby(ctx, params)
+	err = w.Handler.ListPosts(ctx, params)
 	return err
 }
 
-// SetOffline converts echo context to params.
-func (w *ServerInterfaceWrapper) SetOffline(ctx echo.Context) error {
+// CreatePost converts echo context to params.
+func (w *ServerInterfaceWrapper) CreatePost(ctx echo.Context) error {
 	var err error
 
 	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.SetOffline(ctx)
+	err = w.Handler.CreatePost(ctx)
 	return err
 }
 
-// SetOnline converts echo context to params.
-func (w *ServerInterfaceWrapper) SetOnline(ctx echo.Context) error {
+// DeletePost converts echo context to params.
+func (w *ServerInterfaceWrapper) DeletePost(ctx echo.Context) error {
 	var err error
+	// ------------- Path parameter "postId" -------------
+	var postId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "postId", ctx.Param("postId"), &postId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter postId: %s", err))
+	}
 
 	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.SetOnline(ctx)
+	err = w.Handler.DeletePost(ctx, postId)
+	return err
+}
+
+// GetPost converts echo context to params.
+func (w *ServerInterfaceWrapper) GetPost(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "postId" -------------
+	var postId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "postId", ctx.Param("postId"), &postId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter postId: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.GetPost(ctx, postId)
+	return err
+}
+
+// UpdatePost converts echo context to params.
+func (w *ServerInterfaceWrapper) UpdatePost(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "postId" -------------
+	var postId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "postId", ctx.Param("postId"), &postId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter postId: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.UpdatePost(ctx, postId)
 	return err
 }
 
@@ -161,9 +341,12 @@ func RegisterHandlersWithOptions(router EchoRouter, si ServerInterface, options 
 		Handler: si,
 	}
 
+	router.GET(options.BaseURL+"/v1/location", wrapper.GetLocation, options.OperationMiddlewares["getLocation"]...)
 	router.PUT(options.BaseURL+"/v1/location", wrapper.UpdateLocation, options.OperationMiddlewares["updateLocation"]...)
-	router.GET(options.BaseURL+"/v1/location/nearby", wrapper.GetNearby, options.OperationMiddlewares["getNearby"]...)
-	router.POST(options.BaseURL+"/v1/presence/offline", wrapper.SetOffline, options.OperationMiddlewares["setOffline"]...)
-	router.POST(options.BaseURL+"/v1/presence/online", wrapper.SetOnline, options.OperationMiddlewares["setOnline"]...)
+	router.GET(options.BaseURL+"/v1/posts", wrapper.ListPosts, options.OperationMiddlewares["listPosts"]...)
+	router.POST(options.BaseURL+"/v1/posts", wrapper.CreatePost, options.OperationMiddlewares["createPost"]...)
+	router.DELETE(options.BaseURL+"/v1/posts/:postId", wrapper.DeletePost, options.OperationMiddlewares["deletePost"]...)
+	router.GET(options.BaseURL+"/v1/posts/:postId", wrapper.GetPost, options.OperationMiddlewares["getPost"]...)
+	router.PUT(options.BaseURL+"/v1/posts/:postId", wrapper.UpdatePost, options.OperationMiddlewares["updatePost"]...)
 
 }

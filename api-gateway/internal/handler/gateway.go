@@ -44,6 +44,10 @@ func RegisterRoutes(e *echo.Echo, cfg *config.Config) {
 	// Location Service — exact paths + wildcard sub-paths
 	api.Any("/location", proxyTo(cfg.LocationServiceURL))
 	api.Any("/location/*", proxyTo(cfg.LocationServiceURL))
+
+	// Map Posts — proxied to location service (PostGIS-backed)
+	api.Any("/posts", proxyTo(cfg.LocationServiceURL))
+	api.Any("/posts/*", proxyTo(cfg.LocationServiceURL))
 }
 
 func healthCheck(c echo.Context) error {

@@ -1,0 +1,17 @@
+// ─── WebSocket Types ────────────────────────────────────────────────────
+
+/** Matches the Go backend's LocationMessage struct */
+export interface WSLocationMessage {
+  type: "location_update"
+  user_id: string
+  latitude: number
+  longitude: number
+}
+
+export type WSStatus = "connecting" | "connected" | "disconnected" | "error"
+
+export interface WSState {
+  status: WSStatus
+  lastMessage: WSLocationMessage | null
+  messageCount: number
+}
