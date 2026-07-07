@@ -62,3 +62,22 @@ build/
 
 # Secrets
 secrets.yaml
+README.md
+README.md
+ReadMePlanv2.md
+chat-service/ARCHITECTURE.md
+README.md
+README.md
+chat-service/TESTING.md
+location-service/Location-01.md
+location-service/Location-service-detail-01.md
+web/ReadMeForMapv2.md
+web/ReadMeForMapv1.md
+web/ChatSectionUIdesing.md
+web/API.md
+.gitignore
+.gitignore
+README.md
+match-service/ARCHITECTURE.md
+user-service/UserServiceDBPlan.md
+README.md
