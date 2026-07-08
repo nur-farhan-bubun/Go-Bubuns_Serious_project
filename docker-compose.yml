@@ -54,11 +54,15 @@ services:
       - "8083:8083"
     environment:
       PORT: "8083"
-      SCYLLA_URL: "scylladb://chat-db:9042/chat"
+      SCYLLA_URL: "scylladb://chat-db:9042/app_chat"
       REDIS_URL: "redis:6379"
+    # Back off and retry automatically if Scylla takes a few seconds longer to settle
+    restart: on-failure:5
     depends_on:
-      - chat-db
-      - redis
+      chat-db:
+        condition: service_healthy
+      redis:
+        condition: service_started
 
   location-service:
     build:
@@ -107,6 +111,12 @@ services:
     image: scylladb/scylla:5.4
     ports:
       - "9042:9042"
+    # Added native health check block to satisfy the chat-service dependency
+    healthcheck:
+      test: ["CMD-SHELL", "cqlsh -e 'DESCRIBE KEYSPACES'"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
 
   location-db:
     image: postgis/postgis:16-3.4

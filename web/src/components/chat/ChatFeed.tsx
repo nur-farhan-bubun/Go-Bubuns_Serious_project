@@ -3,7 +3,6 @@
 import { useState, useRef, useEffect, useMemo } from "react"
 import { motion } from "framer-motion"
 import { useChatStore } from "./ChatStore"
-import { getUserById } from "./ChatData"
 import Image from "next/image"
 
 // ─── Helpers ────────────────────────────────────────────────────────────
@@ -100,12 +99,47 @@ function DotsIcon() {
   )
 }
 
+// ─── Helpers ────────────────────────────────────────────────────────────
+
+/**
+ * Derives a stable color from a user ID string.
+ */
+function userIdColor(id: string): string {
+  const colors = ["#5865F2", "#ED4245", "#57F287", "#FEE75C", "#EB459E", "#1ABC9C", "#9B59B6", "#3498DB", "#E67E22", "#00BCD4"]
+  let hash = 0
+  for (let i = 0; i < id.length; i++) {
+    hash = id.charCodeAt(i) + ((hash << 5) - hash)
+  }
+  return colors[Math.abs(hash) % colors.length]
+}
+
+/**
+ * Derives initials from a user ID.
+ */
+function userIdInitials(id: string): string {
+  const parts = id.split(/[-_]/)
+  if (parts.length >= 2) {
+    return parts.slice(1).map((p) => p[0]?.toUpperCase() || "").join("").slice(0, 2)
+  }
+  return id.slice(0, 2).toUpperCase()
+}
+
+/**
+ * Derives a display name from a user ID.
+ */
+function userIdDisplayName(id: string): string {
+  const parts = id.split(/[-_]/)
+  if (parts.length >= 2) {
+    return parts.slice(1).map((p) => p.charAt(0).toUpperCase() + p.slice(1)).join(" ").slice(0, 20)
+  }
+  return `User ${id.slice(0, 6)}`
+}
+
 // ─── Message Bubble ─────────────────────────────────────────────────────
 
 function MessageBubble({ msg, isOwn }: { msg: { id: string; senderId: string; content: string; timestamp: string; type: string }; isOwn: boolean }) {
-  const sender = getUserById(msg.senderId)
-  const color = sender?.color || "#5865F2"
-  const initials = sender?.name.split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2) || "??"
+  const color = userIdColor(msg.senderId)
+  const initials = userIdInitials(msg.senderId)
 
   if (msg.type === "system") {
     // System message — merged style like Slack/Discord
@@ -172,7 +206,7 @@ function MessageBubble({ msg, isOwn }: { msg: { id: string; senderId: string; co
       <div className={`flex-1 min-w-0 ${isOwn ? "items-end" : ""}`}>
         <div className={`flex items-center gap-2 mb-0.5 ${isOwn ? "flex-row-reverse" : ""}`}>
           <span className="text-[12px] font-semibold" style={{ color: isOwn ? "#E6FF7B" : color }}>
-            {sender?.name || "Unknown"}
+            {userIdDisplayName(msg.senderId)}
           </span>
           <span className="text-[10px] text-chat-muted">{formatTime(msg.timestamp)}</span>
         </div>
@@ -187,7 +221,7 @@ function MessageBubble({ msg, isOwn }: { msg: { id: string; senderId: string; co
 // ─── Component ──────────────────────────────────────────────────────────
 
 export default function ChatFeed() {
-  const { activeConversationId, messages, conversations, sendMessage } = useChatStore()
+  const { activeConversationId, messages, conversations, sendMessage, currentUser } = useChatStore()
   const [input, setInput] = useState("")
   const listRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -349,7 +383,7 @@ export default function ChatFeed() {
                   <MessageBubble
                     key={msg.id || mi}
                     msg={msg}
-                    isOwn={msg.senderId === "u-me"}
+                    isOwn={msg.senderId === currentUser.id}
                   />
                 ))}
               </div>

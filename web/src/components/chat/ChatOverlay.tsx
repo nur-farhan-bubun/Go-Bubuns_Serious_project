@@ -29,15 +29,12 @@ export default function ChatOverlay() {
           {/* ─── Chat Panel ────────────────────────────────────────────── */}
           <motion.div
             key="chat-panel"
-            className="fixed inset-0 z-[95] flex pointer-events-none"
+            className="fixed inset-y-0 left-20 right-0 z-[95] flex pointer-events-none"
             initial={{ x: "-100%" }}
             animate={{ x: 0 }}
             exit={{ x: "-100%" }}
             transition={{ type: "spring", damping: 28, stiffness: 300, mass: 0.8 }}
           >
-            {/* Left spacer for workspace bar (w-20) */}
-            <div className="w-20 shrink-0 pointer-events-none" />
-
             {/* Remaining 3 columns */}
             <div className="flex flex-1 pointer-events-auto h-full overflow-hidden">
               {/* Conversations */}

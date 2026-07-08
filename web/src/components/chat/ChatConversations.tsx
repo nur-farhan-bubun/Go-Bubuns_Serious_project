@@ -2,7 +2,6 @@
 
 import { useState } from "react"
 import { useChatStore } from "./ChatStore"
-import { getUserById } from "./ChatData"
 
 // ─── Search Icon ────────────────────────────────────────────────────────
 
@@ -91,7 +90,7 @@ export default function ChatConversations() {
           sorted.map((conv) => {
             const isActive = conv.id === activeConversationId
             const firstMember = conv.members[1] // Skip self
-            const statusColor = firstMember ? getUserById(firstMember.id)?.status === "online" ? "bg-chat-online" : "bg-slate-600" : "bg-slate-600"
+            const statusColor = "bg-slate-600"
 
             return (
               <button

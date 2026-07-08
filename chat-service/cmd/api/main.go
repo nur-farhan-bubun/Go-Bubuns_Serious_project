@@ -14,6 +14,9 @@ import (
 	"github.com/ride-sharing/chat-service/internal/config"
 	"github.com/ride-sharing/chat-service/internal/handler"
 	kafkainfra "github.com/ride-sharing/chat-service/internal/kafka"
+	scyllarepo "github.com/ride-sharing/chat-service/internal/repository/scylladb"
+	redisrepo "github.com/ride-sharing/chat-service/internal/repository/redis"
+	"github.com/ride-sharing/chat-service/internal/service"
 	ws "github.com/ride-sharing/chat-service/internal/websocket"
 )
 
@@ -22,6 +25,31 @@ const shutdownTimeout = 10 * time.Second
 func main() {
 	cfg := config.Load()
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	ctx := context.Background()
+
+	// Connect to ScyllaDB
+	chatRepo, err := scyllarepo.New(ctx, cfg.ScyllaURL, logger)
+	if err != nil {
+		logger.Error("failed to connect to ScyllaDB", slog.String("error", err.Error()))
+		os.Exit(1)
+	}
+	defer chatRepo.Close()
+	logger.Info("connected to ScyllaDB", slog.String("url", cfg.ScyllaURL))
+
+	// Connect to Redis for presence
+	presenceRepo, err := redisrepo.NewPresenceRepository(ctx, cfg.RedisURL)
+	if err != nil {
+		logger.Warn("failed to connect to Redis, presence will be unavailable",
+			slog.String("error", err.Error()),
+		)
+		presenceRepo = nil
+	} else {
+		defer presenceRepo.Close()
+		logger.Info("connected to Redis")
+	}
+
+	// Create the chat service
+	svc := service.New(chatRepo, presenceRepo)
 
 	// Create the sharded WebSocket hub.
 	hub := ws.NewHub(logger)
@@ -35,7 +63,7 @@ func main() {
 	e := echo.New()
 
 	// Register routes via generated oapi-codegen handler
-	openapiHandler := handler.NewOpenAPIHandler(cfg, hub, producer, logger)
+	openapiHandler := handler.NewOpenAPIHandler(cfg, svc, hub, producer, logger)
 	api.RegisterHandlers(e, openapiHandler)
 
 	// WebSocket endpoint (not part of OpenAPI spec)

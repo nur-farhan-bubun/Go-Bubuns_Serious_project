@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"time"
 
 	"github.com/ride-sharing/chat-service/internal/domain"
 	scyllarepo "github.com/ride-sharing/chat-service/internal/repository/scylladb"
@@ -10,7 +11,7 @@ import (
 
 // Service handles chat business logic.
 type Service struct {
-	chatRepo    *scyllarepo.Repository
+	chatRepo     *scyllarepo.Repository
 	presenceRepo *redisrepo.PresenceRepository
 }
 
@@ -19,7 +20,22 @@ func New(chatRepo *scyllarepo.Repository, presenceRepo *redisrepo.PresenceReposi
 	return &Service{chatRepo: chatRepo, presenceRepo: presenceRepo}
 }
 
-// SendMessage sends a message in a conversation.
+// CreateConversation creates a new conversation between two users.
+func (s *Service) CreateConversation(ctx context.Context, conv *domain.Conversation) error {
+	return s.chatRepo.CreateConversation(ctx, conv)
+}
+
+// GetConversations returns all conversations for a user.
+func (s *Service) GetConversations(ctx context.Context, userID string) ([]*domain.Conversation, error) {
+	return s.chatRepo.GetConversationsByUserID(ctx, userID)
+}
+
+// GetConversation returns a single conversation by ID.
+func (s *Service) GetConversation(ctx context.Context, id string) (*domain.Conversation, error) {
+	return s.chatRepo.GetConversation(ctx, id)
+}
+
+// SendMessage saves a message in a conversation.
 func (s *Service) SendMessage(ctx context.Context, msg *domain.Message) error {
 	return s.chatRepo.SaveMessage(ctx, msg)
 }
@@ -29,7 +45,24 @@ func (s *Service) GetMessages(ctx context.Context, conversationID string, limit,
 	return s.chatRepo.GetMessagesByConversationID(ctx, conversationID, limit, offset)
 }
 
-// GetConversations returns all conversations for a user.
-func (s *Service) GetConversations(ctx context.Context, userID string) ([]*domain.Conversation, error) {
-	return s.chatRepo.GetConversationsByUserID(ctx, userID)
+// GetPresence retrieves a user's online presence.
+// Returns a default offline status if the presence repo is not configured.
+func (s *Service) GetPresence(ctx context.Context, userID string) (*domain.Presence, error) {
+	if s.presenceRepo == nil {
+		return &domain.Presence{
+			UserID:   userID,
+			Status:   "offline",
+			LastSeen: time.Now(),
+		}, nil
+	}
+	return s.presenceRepo.GetPresence(ctx, userID)
+}
+
+// SetPresence updates a user's online presence.
+// No-op if the presence repo is not configured.
+func (s *Service) SetPresence(ctx context.Context, presence *domain.Presence) error {
+	if s.presenceRepo == nil {
+		return nil
+	}
+	return s.presenceRepo.SetPresence(ctx, presence)
 }

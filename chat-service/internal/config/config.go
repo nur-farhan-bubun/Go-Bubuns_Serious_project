@@ -14,7 +14,7 @@ type Config struct {
 func Load() *Config {
 	return &Config{
 		Port:         getEnv("PORT", "8083"),
-		ScyllaURL:    getEnv("SCYLLA_URL", "scylladb://chat-db:9042/chat"),
+		ScyllaURL:    getEnv("SCYLLA_URL", "scylladb://chat-db:9042/app_chat"),
 		RedisURL:     getEnv("REDIS_URL", "redis:6379"),
 		KafkaBrokers: getEnv("KAFKA_BROKERS", "kafka:9092"),
 	}
