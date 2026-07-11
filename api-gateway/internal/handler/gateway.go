@@ -51,10 +51,14 @@ func RegisterRoutes(e *echo.Echo, cfg *config.Config, logger *slog.Logger) {
 	// Chat Service — REST + WebSocket
 	api.Any("/conversations", proxyTo(cfg.ChatServiceURL))
 	api.Any("/conversations/*", proxyTo(cfg.ChatServiceURL))
+	api.Any("/groups", proxyTo(cfg.ChatServiceURL))
+	api.Any("/groups/*", proxyTo(cfg.ChatServiceURL))
 	api.Any("/messages", proxyTo(cfg.ChatServiceURL))
 	api.Any("/messages/*", proxyTo(cfg.ChatServiceURL))
 	api.Any("/presence", proxyTo(cfg.ChatServiceURL))
 	api.Any("/presence/*", proxyTo(cfg.ChatServiceURL))
+	api.Any("/chat/users", proxyTo(cfg.ChatServiceURL))
+	api.Any("/chat/users/*", proxyTo(cfg.ChatServiceURL))
 
 
 	// Location Service — exact paths + wildcard sub-paths

@@ -3,6 +3,7 @@
 export interface ChatUser {
   id: string
   name: string
+  email: string
   avatar: string
   color: string
   status: "online" | "idle" | "dnd" | "offline"

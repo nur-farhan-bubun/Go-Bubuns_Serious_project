@@ -137,7 +137,7 @@ function userIdDisplayName(id: string): string {
 
 // ─── Message Bubble ─────────────────────────────────────────────────────
 
-function MessageBubble({ msg, isOwn }: { msg: { id: string; senderId: string; content: string; timestamp: string; type: string }; isOwn: boolean }) {
+function MessageBubble({ msg, isOwn, onUserClick }: { msg: { id: string; senderId: string; content: string; timestamp: string; type: string }; isOwn: boolean; onUserClick: (userId: string) => void }) {
   const color = userIdColor(msg.senderId)
   const initials = userIdInitials(msg.senderId)
 
@@ -186,15 +186,19 @@ function MessageBubble({ msg, isOwn }: { msg: { id: string; senderId: string; co
       animate={{ opacity: 1, y: 0 }}
       className={`flex gap-3 group px-1 py-1 ${isOwn ? "flex-row-reverse" : ""}`}
     >
-      {/* Avatar Column */}
+      {/* Avatar Column — clickable to view profile */}
       <div className="shrink-0 mt-0.5">
         {isOwn ? (
-          <div className="w-8 h-8 rounded-full bg-chat-accent flex items-center justify-center text-[10px] font-bold text-black">
+          <div
+            onClick={() => onUserClick(msg.senderId)}
+            className="w-8 h-8 rounded-full bg-chat-accent flex items-center justify-center text-[10px] font-bold text-black cursor-pointer hover:opacity-80 transition-opacity"
+          >
             Y
           </div>
         ) : (
           <div
-            className="w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-bold text-white shadow-sm"
+            onClick={() => onUserClick(msg.senderId)}
+            className="w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-bold text-white shadow-sm cursor-pointer hover:opacity-80 transition-opacity"
             style={{ backgroundColor: color }}
           >
             {initials}
@@ -205,9 +209,13 @@ function MessageBubble({ msg, isOwn }: { msg: { id: string; senderId: string; co
       {/* Content */}
       <div className={`flex-1 min-w-0 ${isOwn ? "items-end" : ""}`}>
         <div className={`flex items-center gap-2 mb-0.5 ${isOwn ? "flex-row-reverse" : ""}`}>
-          <span className="text-[12px] font-semibold" style={{ color: isOwn ? "#E6FF7B" : color }}>
+          <button
+            onClick={() => onUserClick(msg.senderId)}
+            className="text-[12px] font-semibold hover:underline cursor-pointer transition-colors"
+            style={{ color: isOwn ? "#E6FF7B" : color }}
+          >
             {userIdDisplayName(msg.senderId)}
-          </span>
+          </button>
           <span className="text-[10px] text-chat-muted">{formatTime(msg.timestamp)}</span>
         </div>
         <div className={`text-sm text-slate-200 leading-relaxed ${isOwn ? "text-right" : ""}`}>
@@ -221,7 +229,7 @@ function MessageBubble({ msg, isOwn }: { msg: { id: string; senderId: string; co
 // ─── Component ──────────────────────────────────────────────────────────
 
 export default function ChatFeed() {
-  const { activeConversationId, messages, conversations, sendMessage, currentUser } = useChatStore()
+  const { activeConversationId, messages, conversations, sendMessage, currentUser, setSelectedProfileUser } = useChatStore()
   const [input, setInput] = useState("")
   const listRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -282,18 +290,27 @@ export default function ChatFeed() {
 
           {conv && firstMember ? (
             <>
-              <div
-                className="w-9 h-9 rounded-2xl flex items-center justify-center text-xs font-bold text-white shrink-0"
+              <button
+                onClick={() => setSelectedProfileUser(firstMember.id)}
+                className="w-9 h-9 rounded-2xl flex items-center justify-center text-xs font-bold text-white shrink-0 hover:opacity-80 transition-opacity cursor-pointer"
                 style={{ backgroundColor: firstMember.color }}
               >
                 {conv.avatar}
-              </div>
+              </button>
               <div className="min-w-0">
-                <h3 className="text-sm font-semibold text-white truncate">{conv.name}</h3>
-                <p className="text-[10px] text-chat-muted flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-chat-online inline-block" />
-                  {conv.onlineCount} online
-                </p>
+              <button
+                onClick={() => setSelectedProfileUser(firstMember.id)}
+                className="text-sm font-semibold text-white truncate hover:underline transition-all text-left"
+              >
+                {conv.name}
+              </button>
+              {firstMember?.email && (
+                <p className="text-[9px] text-chat-muted/70 truncate leading-tight">{firstMember.email}</p>
+              )}
+              <p className="text-[10px] text-chat-muted flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-chat-online inline-block" />
+                {conv.onlineCount} online
+              </p>
               </div>
             </>
           ) : (
@@ -378,12 +395,12 @@ export default function ChatFeed() {
               </div>
 
               {/* Messages */}
-              <div className="space-y-0.5">
-                {group.messages.map((msg, mi) => (
+              <div className="space-y-0.5">                  {group.messages.map((msg, mi) => (
                   <MessageBubble
                     key={msg.id || mi}
                     msg={msg}
                     isOwn={msg.senderId === currentUser.id}
+                    onUserClick={setSelectedProfileUser}
                   />
                 ))}
               </div>

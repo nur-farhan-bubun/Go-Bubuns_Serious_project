@@ -5,11 +5,12 @@ import { useChatStore } from "./ChatStore"
 import ChatConversations from "./ChatConversations"
 import ChatFeed from "./ChatFeed"
 import ChatInfoSidebar from "./ChatInfoSidebar"
+import UsersSidebar from "./UsersSidebar"
 
 // ─── Component ──────────────────────────────────────────────────────────
 
 export default function ChatOverlay() {
-  const { isChatOpen, closeChat } = useChatStore()
+  const { isChatOpen, closeChat, activeWorkspaceView } = useChatStore()
 
   return (
     <AnimatePresence>
@@ -35,20 +36,45 @@ export default function ChatOverlay() {
             exit={{ x: "-100%" }}
             transition={{ type: "spring", damping: 28, stiffness: 300, mass: 0.8 }}
           >
-            {/* Remaining 3 columns */}
             <div className="flex flex-1 pointer-events-auto h-full overflow-hidden">
-              {/* Conversations */}
-              <div className="hidden md:block">
-                <ChatConversations />
-              </div>
+              {activeWorkspaceView === "users" ? (
+                /* ── Users Directory View ────────────────────────────── */
+                <>
+                  <UsersSidebar />
+                  <div className="flex-1 flex items-center justify-center bg-chat-panel">
+                    <div className="text-center">
+                      <div className="w-16 h-16 rounded-full bg-chat-card flex items-center justify-center mx-auto mb-4">
+                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#8A8D93" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+                          <circle cx="9" cy="7" r="4" />
+                          <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+                          <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                        </svg>
+                      </div>
+                      <h3 className="text-base font-semibold text-white">User Directory</h3>
+                      <p className="text-sm text-chat-muted mt-1 max-w-xs">
+                        Browse registered users and start a conversation by clicking the message icon.
+                      </p>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                /* ── Chat View ──────────────────────────────────────── */
+                <>
+                  {/* Conversations */}
+                  <div className="hidden md:block">
+                    <ChatConversations />
+                  </div>
 
-              {/* Main Feed */}
-              <ChatFeed />
+                  {/* Main Feed */}
+                  <ChatFeed />
 
-              {/* Info Sidebar */}
-              <div className="hidden xl:block">
-                <ChatInfoSidebar />
-              </div>
+                  {/* Info Sidebar */}
+                  <div className="hidden xl:block">
+                    <ChatInfoSidebar />
+                  </div>
+                </>
+              )}
             </div>
           </motion.div>
         </>

@@ -2,7 +2,7 @@
 
 import { motion } from "framer-motion"
 import { useChatStore } from "./ChatStore"
-import { loginWithGoogle, loginSimulated, logout, getAuthState, getTokenStatus, type TokenStatus } from "../../lib/auth"
+import { loginWithGoogle, loginSimulated, logout, getAuthState, getTokenStatus, getLocalRegisteredUsers, type TokenStatus, type AuthUser } from "../../lib/auth"
 import { useState, useEffect, useRef } from "react"
 
 // ─── SVG Icons ──────────────────────────────────────────────────────────
@@ -53,26 +53,76 @@ function LoginIcon() {
   )
 }
 
-// ─── Simulated Login Dropdown ───────────────────────────────────────────
+function UsersIcon() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+      <circle cx="9" cy="7" r="4" />
+      <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+    </svg>
+  )
+}
 
-const SIM_LOGIN_USERS: { id: string; name: string; color: string }[] = [
-  { id: "user-sim-001", name: "Alice (Default)", color: "#5865F2" },
-  { id: "user-sim-alice", name: "Alice Demo", color: "#f59e0b" },
-  { id: "user-sim-bob", name: "Bob Demo", color: "#10b981" },
-  { id: "user-sim-carol", name: "Carol Demo", color: "#8b5cf6" },
-]
+// ─── Login Dropdown ───────────────────────────────────────────
 
 function LoginDropdown({ onClose, dropdownRef }: { onClose: () => void; dropdownRef: React.RefObject<HTMLDivElement | null> }) {
+  const [localUsers, setLocalUsers] = useState<AuthUser[]>([])
+  const [emailInput, setEmailInput] = useState("")
   const setCurrentUserId = useChatStore((s) => s.setCurrentUserId)
 
-  async function handleSimLogin(userId: string, name: string) {
-    const user = await loginSimulated(userId)
-    setCurrentUserId(user.id, user.name || name)
+  useEffect(() => {
+    setLocalUsers(getLocalRegisteredUsers())
+  }, [])
+
+  async function handleEmailLogin(e: React.FormEvent) {
+    e.preventDefault()
+    if (!emailInput.trim()) return
+    const userId = `user-${emailInput.replace(/[^a-zA-Z0-9]/g, "-").toLowerCase()}`
+    const displayName = emailInput.split("@")[0]
+    const user = await loginSimulated(userId, displayName, emailInput.trim())
+    setCurrentUserId(user.id, user.name, user.email)
     onClose()
+  }
+
+  async function handleExistingUserLogin(u: AuthUser) {
+    const user = await loginSimulated(u.id, u.name, u.email)
+    setCurrentUserId(user.id, user.name, user.email)
+    onClose()
+  }
+
+  const colors = ["#5865F2", "#ED4245", "#57F287", "#FEE75C", "#EB459E", "#1ABC9C", "#9B59B6", "#3498DB", "#E67E22", "#00BCD4"]
+  function colorFromId(id: string): string {
+    let hash = 0
+    for (let i = 0; i < id.length; i++) {
+      hash = id.charCodeAt(i) + ((hash << 5) - hash)
+    }
+    return colors[Math.abs(hash) % colors.length]
   }
 
   return (
     <div ref={dropdownRef} className="absolute left-full ml-3 bottom-0 bg-black/95 border border-chat-border rounded-2xl p-2 shadow-2xl z-[200] min-w-[200px] backdrop-blur-xl">
+      {/* Quick email login */}
+      <form onSubmit={handleEmailLogin} className="px-2 pb-2">
+        <p className="text-[10px] text-chat-muted pb-1.5 font-medium">Quick email login</p>
+        <div className="flex gap-1.5">
+          <input
+            type="email"
+            value={emailInput}
+            onChange={(e) => setEmailInput(e.target.value)}
+            placeholder="your@email.com"
+            className="flex-1 bg-chat-card text-white text-xs rounded-xl px-3 py-2 outline-none border border-chat-border focus:border-slate-600 placeholder:text-chat-muted transition-colors"
+          />
+          <button
+            type="submit"
+            disabled={!emailInput.trim()}
+            className="px-3 py-2 bg-chat-accent text-black text-xs font-semibold rounded-xl hover:opacity-90 transition-all disabled:opacity-50"
+          >
+            Go
+          </button>
+        </div>
+      </form>
+
       {/* Google OAuth */}
       <button
         onClick={() => { loginWithGoogle(); onClose() }}
@@ -87,30 +137,34 @@ function LoginDropdown({ onClose, dropdownRef }: { onClose: () => void; dropdown
         </div>
       </button>
 
-      {/* Divider */}
-      <div className="flex items-center gap-2 px-3 py-2">
-        <div className="flex-1 h-px bg-chat-border" />
-        <span className="text-[10px] text-chat-muted">OR</span>
-        <div className="flex-1 h-px bg-chat-border" />
-      </div>
-
-      {/* Simulated users */}
-      <p className="text-[10px] text-chat-muted px-3 pb-1 font-medium">Dev Login (no backend)</p>
-      {SIM_LOGIN_USERS.map((u) => (
-        <button
-          key={u.id}
-          onClick={() => handleSimLogin(u.id, u.name)}
-          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl hover:bg-chat-card transition-colors text-left"
-        >
-          <div
-            className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold text-white shrink-0"
-            style={{ backgroundColor: u.color }}
-          >
-            {u.name.split(" ")[0][0]}
+      {/* Recent users */}
+      {localUsers.length > 0 && (
+        <>
+          <div className="flex items-center gap-2 px-3 py-1.5">
+            <div className="flex-1 h-px bg-chat-border" />
+            <span className="text-[10px] text-chat-muted">Recent</span>
+            <div className="flex-1 h-px bg-chat-border" />
           </div>
-          <span className="text-xs text-slate-300">{u.name}</span>
-        </button>
-      ))}
+          {localUsers.map((u) => (
+            <button
+              key={u.id}
+              onClick={() => handleExistingUserLogin(u)}
+              className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl hover:bg-chat-card transition-colors text-left"
+            >
+              <div
+                className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold text-white shrink-0"
+                style={{ backgroundColor: colorFromId(u.id) }}
+              >
+                {u.name.split(" ")[0][0]?.toUpperCase() || "U"}
+              </div>
+              <div className="min-w-0 flex-1">
+                <span className="text-xs text-slate-300 truncate block">{u.name}</span>
+                <span className="text-[9px] text-chat-muted truncate block">{u.email}</span>
+              </div>
+            </button>
+          ))}
+        </>
+      )}
     </div>
   )
 }
@@ -118,7 +172,7 @@ function LoginDropdown({ onClose, dropdownRef }: { onClose: () => void; dropdown
 // ─── Component ──────────────────────────────────────────────────────────
 
 export default function WorkspaceBar() {
-  const { workspaces, activeWorkspaceId, setWorkspace, isChatOpen, toggleChat, currentUser, resetState } = useChatStore()
+  const { workspaces, activeWorkspaceId, setWorkspace, isChatOpen, openChat, toggleChat, currentUser, resetState, setWorkspaceView, activeWorkspaceView } = useChatStore()
   const [showLogin, setShowLogin] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
   const buttonRef = useRef<HTMLButtonElement>(null)
@@ -227,11 +281,30 @@ export default function WorkspaceBar() {
 
       {/* ── Bottom: Actions ─────────────────────────────────────────── */}
       <div className="flex flex-col items-center gap-3 mt-auto">
+        {/* Users Directory */}
+        <button
+          onClick={() => {
+            if (!isChatOpen) openChat()
+            setWorkspaceView("users")
+          }}
+          className={`w-12 h-12 rounded-2xl flex items-center justify-center text-lg transition-all duration-200
+            ${isChatOpen && activeWorkspaceView === "users"
+              ? "bg-chat-accent text-black shadow-lg shadow-chat-accent/20"
+              : "bg-chat-inner text-chat-muted hover:bg-chat-card hover:text-white hover:rounded-xl"
+            }`}
+          title="Users"
+        >
+          <UsersIcon />
+        </button>
+
         {/* Chat Toggle */}
         <button
-          onClick={toggleChat}
+          onClick={() => {
+            if (!isChatOpen) openChat()
+            else setWorkspaceView("chat")
+          }}
           className={`w-12 h-12 rounded-2xl flex items-center justify-center text-lg transition-all duration-200 relative
-            ${isChatOpen
+            ${isChatOpen && activeWorkspaceView === "chat"
               ? "bg-chat-accent text-black shadow-lg shadow-chat-accent/20"
               : "bg-chat-inner text-chat-muted hover:bg-chat-card hover:text-white hover:rounded-xl"
             }`}

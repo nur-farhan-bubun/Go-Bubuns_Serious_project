@@ -100,8 +100,13 @@ func (c *Consumer) Run(ctx context.Context) {
 			continue
 		}
 
-		// Non-blocking hand-off to the Hub's sharded room map.
-		c.hub.SendToRoom(msg.RoomID, payload)
+		// Route by message type: presence events are global, others are room-scoped.
+		if msg.Type == domain.WSMsgTypePresence {
+			c.hub.Broadcast(payload)
+		} else {
+			// Non-blocking hand-off to the Hub's sharded room map.
+			c.hub.SendToRoom(msg.RoomID, payload)
+		}
 	}
 }
 

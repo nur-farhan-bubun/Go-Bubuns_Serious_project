@@ -1,9 +1,9 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { loginWithGoogle, loginSimulated, clearLoggedOutFlag } from "../../lib/auth"
+import { loginWithGoogle, loginSimulated, clearLoggedOutFlag, getLocalRegisteredUsers, type AuthUser } from "../../lib/auth"
 import { useChatStore } from "../../components/chat/ChatStore"
 
 // ─── SVG Icons ──────────────────────────────────────────────────────────
@@ -74,15 +74,6 @@ function ArrowRightIcon() {
   )
 }
 
-// ─── Simulated users ────────────────────────────────────────────────────
-
-const SIM_LOGIN_USERS: { id: string; name: string; color: string; avatar: string }[] = [
-  { id: "user-sim-001", name: "Alice", color: "#5865F2", avatar: "A" },
-  { id: "user-sim-alice", name: "Alice Demo", color: "#f59e0b", avatar: "A" },
-  { id: "user-sim-bob", name: "Bob Demo", color: "#10b981", avatar: "B" },
-  { id: "user-sim-carol", name: "Carol Demo", color: "#8b5cf6", avatar: "C" },
-]
-
 // ─── Component ──────────────────────────────────────────────────────────
 
 export default function LoginPage() {
@@ -94,6 +85,12 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState("")
+  const [localUsers, setLocalUsers] = useState<AuthUser[]>([])
+
+  // Load recently used users from localStorage
+  useEffect(() => {
+    setLocalUsers(getLocalRegisteredUsers())
+  }, [])
 
   async function handleEmailLogin(e: React.FormEvent) {
     e.preventDefault()
@@ -105,11 +102,10 @@ export default function LoginPage() {
 
     setIsSubmitting(true)
     try {
-      // Since the backend doesn't have email/password auth, use simulated login
-      // with a stable user ID derived from the email
+      // Use a stable user ID derived from the email
       const userId = `user-${email.replace(/[^a-zA-Z0-9]/g, "-").toLowerCase()}`
       const displayName = email.split("@")[0]
-      const user = await loginSimulated(userId, displayName)
+      const user = await loginSimulated(userId, displayName, email.trim())
       setCurrentUserId(user.id, user.name)
       router.push("/")
     } catch {
@@ -119,9 +115,9 @@ export default function LoginPage() {
     }
   }
 
-  async function handleSimLogin(userId: string, name: string) {
+  async function handleExistingUserLogin(u: AuthUser) {
     clearLoggedOutFlag()
-    const user = await loginSimulated(userId, name)
+    const user = await loginSimulated(u.id, u.name, u.email)
     setCurrentUserId(user.id, user.name)
     router.push("/")
   }
@@ -232,30 +228,46 @@ export default function LoginPage() {
           </button>
 
           {/* ── Divider ────────────────────────────────────────────── */}
-          <div className="flex items-center gap-3 my-5">
-            <div className="flex-1 h-px bg-slate-800" />
-            <span className="text-[11px] text-slate-500 font-medium">dev quick login</span>
-            <div className="flex-1 h-px bg-slate-800" />
-          </div>
+          {localUsers.length > 0 && (
+            <>
+              <div className="flex items-center gap-3 my-5">
+                <span className="text-[11px] text-slate-500 font-medium">recent accounts</span>
+                <div className="flex-1 h-px bg-slate-800" />
+              </div>
 
-          {/* ── Simulated Users ────────────────────────────────────── */}
-          <div className="grid grid-cols-2 gap-2">
-            {SIM_LOGIN_USERS.map((u) => (
-              <button
-                key={u.id}
-                onClick={() => handleSimLogin(u.id, u.name)}
-                className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl bg-slate-800/50 hover:bg-slate-800 border border-slate-700/30 hover:border-slate-600/50 transition-all text-left"
-              >
-                <div
-                  className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0"
-                  style={{ backgroundColor: u.color }}
-                >
-                  {u.avatar}
-                </div>
-                <span className="text-xs text-slate-300 truncate">{u.name}</span>
-              </button>
-            ))}
-          </div>
+              {/* ── Recently Used Users ────────────────────────────── */}
+              <div className="grid grid-cols-2 gap-2">
+                {localUsers.map((u) => {
+                  const initials = u.name.split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2)
+                  const colors = ["#5865F2", "#ED4245", "#57F287", "#FEE75C", "#EB459E", "#1ABC9C", "#9B59B6", "#3498DB", "#E67E22", "#00BCD4"]
+                  let hash = 0
+                  for (let i = 0; i < u.id.length; i++) {
+                    hash = u.id.charCodeAt(i) + ((hash << 5) - hash)
+                  }
+                  const color = colors[Math.abs(hash) % colors.length]
+
+                  return (
+                    <button
+                      key={u.id}
+                      onClick={() => handleExistingUserLogin(u)}
+                      className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl bg-slate-800/50 hover:bg-slate-800 border border-slate-700/30 hover:border-slate-600/50 transition-all text-left"
+                    >
+                      <div
+                        className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0"
+                        style={{ backgroundColor: color }}
+                      >
+                        {initials}
+                      </div>
+                      <div className="min-w-0">
+                        <span className="text-xs text-slate-300 truncate block">{u.name}</span>
+                        <span className="text-[9px] text-slate-500 truncate block">{u.email}</span>
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
+            </>
+          )}
         </div>
 
         {/* ── Footer ──────────────────────────────────────────────── */}

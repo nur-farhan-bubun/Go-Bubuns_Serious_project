@@ -17,7 +17,9 @@
 
 // ─── Configuration ──────────────────────────────────────────────────────
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080"
+// API base URL. Defaults to same-origin (empty string) so requests go through
+// Next.js rewrites (next.config.ts) which proxy to the API gateway on port 8080.
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || ""
 const AUTH_API = `${API_BASE}/v1/auth`
 
 /** Dev secret for signing simulated JWTs. Must match API Gateway's CLERK_JWT_KEY. */
@@ -193,6 +195,7 @@ export async function handleAuthCallback(code: string, state: string): Promise<A
     if (token && user.id) {
       setToken(token)
       storeUserInfo(user)
+      addLocalRegisteredUser(user)
       return user
     }
 
@@ -203,35 +206,6 @@ export async function handleAuthCallback(code: string, state: string): Promise<A
   }
 }
 
-// ─── Simulated Login (for development without a running backend) ────────
-
-const SIM_USERS: AuthUser[] = [
-  {
-    id: "user-sim-001",
-    email: "alice@example.com",
-    name: "Alice",
-    avatar_url: "",
-  },
-  {
-    id: "user-sim-alice",
-    email: "alice@demo.com",
-    name: "Alice Demo",
-    avatar_url: "",
-  },
-  {
-    id: "user-sim-bob",
-    email: "bob@demo.com",
-    name: "Bob Demo",
-    avatar_url: "",
-  },
-  {
-    id: "user-sim-carol",
-    email: "carol@demo.com",
-    name: "Carol Demo",
-    avatar_url: "",
-  },
-]
-
 /**
  * Simulated login for development — creates a proper HS256 JWT signed with
  * a known dev secret and stores user info.
@@ -241,25 +215,35 @@ const SIM_USERS: AuthUser[] = [
  *
  * This lets you test auth end-to-end without a Clerk account.
  *
- * @param userId - Optional user ID. If provided and matches a SIM_USER, that
- *   user is used. Otherwise a new AuthUser is created with this ID.
- * @param displayName - Optional display name for new (non-SIM_USER) accounts.
+ * @param userId - User ID. If not provided, a new one is generated.
+ * @param displayName - Optional display name.
+ * @param email - Optional email address.
  */
-export async function loginSimulated(userId?: string, displayName?: string): Promise<AuthUser> {
-  let user: AuthUser | undefined
-  if (userId) {
-    user = SIM_USERS.find((u) => u.id === userId)
-    if (!user) {
-      // Unknown user ID — create a runtime user instead of falling back to Alice
-      user = {
-        id: userId,
-        email: `${userId}@demo.local`,
-        name: displayName || userId.replace(/^user-/, "").replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
-        avatar_url: "",
-      }
-    }
+export async function loginSimulated(userId?: string, displayName?: string, email?: string): Promise<AuthUser> {
+  const finalEmail = email || (userId ? `${userId}@demo.local` : `user-${Date.now()}@demo.local`)
+  const finalName = displayName || (userId ? userId.replace(/^user-/, "").replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()) : "User")
+
+  // Try to register with the user-service to get a real UUID assigned.
+  // This UUID is used as the user's ID in the JWT so frontend and backend
+  // agree on identities — critical for conversation sharing.
+  // If registration fails (e.g. user already exists), look up the UUID by email.
+  let finalId = userId || `user-${Date.now()}`
+  const registeredUuid = await registerUserWithService(finalEmail, finalName)
+  if (registeredUuid) {
+    finalId = registeredUuid
   } else {
-    user = SIM_USERS[0]
+    // User already exists — look up their UUID from the user list
+    const existingUuid = await findUserIdByEmail(finalEmail)
+    if (existingUuid) {
+      finalId = existingUuid
+    }
+  }
+
+  const user: AuthUser = {
+    id: finalId,
+    email: finalEmail,
+    name: finalName,
+    avatar_url: "",
   }
 
   const now = Math.floor(Date.now() / 1000)
@@ -279,6 +263,9 @@ export async function loginSimulated(userId?: string, displayName?: string): Pro
   setToken(token)
   storeUserInfo(user)
   clearLoggedOutFlag()
+
+  // Save to local registered users registry so other users can see this user
+  addLocalRegisteredUser(user)
 
   return user
 }
@@ -320,6 +307,89 @@ export function clearLoggedOutFlag(): void {
   localStorage.removeItem(LOGGED_OUT_FLAG_KEY)
 }
 
+// ─── User-Service API helpers ───────────────────────────────────────────
+
+/**
+ * Register a user via the user-service API and return the UUID assigned by the backend.
+ * POST /v1/users — proxied to user-service by the API gateway.
+ * Returns the user ID (UUID) on success, or null if registration fails.
+ */
+export async function registerUserWithService(email: string, displayName: string): Promise<string | null> {
+  try {
+    const res = await fetch(`${API_BASE}/v1/users`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, display_name: displayName }),
+    })
+    if (!res.ok) return null
+    const data = await res.json()
+    return (data.id as string) || null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Look up a user's UUID by email from the user-service.
+ * Used when registration fails because the user already exists.
+ * GET /v1/users returns all users; we find the matching email.
+ */
+export async function findUserIdByEmail(email: string): Promise<string | null> {
+  try {
+    const res = await fetch(`${API_BASE}/v1/users`, {
+      headers: { "Content-Type": "application/json" },
+    })
+    if (!res.ok) return null
+    const data = await res.json()
+    const usersList: Record<string, unknown>[] = data.users || []
+    if (!Array.isArray(usersList)) return null
+    const user = usersList.find((u) => u.email === email)
+    return (user?.id as string) || null
+  } catch {
+    return null
+  }
+}
+
+// ─── Local Registered Users Registry ────────────────────────────────────
+// Tracks all users who have ever logged in via this browser, so they
+// appear in each other's user directory even without a running backend.
+
+const LOCAL_REGISTERED_USERS_KEY = "chat_local_registered_users"
+
+/**
+ * Get all registered users from localStorage.
+ */
+export function getLocalRegisteredUsers(): AuthUser[] {
+  if (typeof window === "undefined") return []
+  try {
+    const raw = localStorage.getItem(LOCAL_REGISTERED_USERS_KEY)
+    if (!raw) return []
+    return JSON.parse(raw) as AuthUser[]
+  } catch {
+    return []
+  }
+}
+
+/**
+ * Add or update a user in the local registered users registry.
+ * Deduplicates by user ID (keeps the latest entry).
+ */
+export function addLocalRegisteredUser(user: AuthUser): void {
+  if (typeof window === "undefined") return
+  try {
+    const users = getLocalRegisteredUsers()
+    const idx = users.findIndex((u) => u.id === user.id)
+    if (idx >= 0) {
+      users[idx] = user
+    } else {
+      users.push(user)
+    }
+    localStorage.setItem(LOCAL_REGISTERED_USERS_KEY, JSON.stringify(users))
+  } catch {
+    // Silently fail
+  }
+}
+
 // ─── Email/Password Registration ─────────────────────────────────────────
 
 /**
@@ -353,6 +423,7 @@ export async function registerUser(email: string, password: string, displayName:
       setToken(token)
       storeUserInfo(user)
       clearLoggedOutFlag()
+      addLocalRegisteredUser(user)
       return user
     }
   } catch {
@@ -375,6 +446,7 @@ export async function registerUser(email: string, password: string, displayName:
   setToken(token)
   storeUserInfo(fallbackUser)
   clearLoggedOutFlag()
+  addLocalRegisteredUser(fallbackUser)
   return fallbackUser
 }
 

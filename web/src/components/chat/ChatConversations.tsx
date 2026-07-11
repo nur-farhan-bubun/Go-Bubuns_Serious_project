@@ -118,9 +118,14 @@ export default function ChatConversations() {
                 {/* Content */}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between gap-2">
-                    <span className={`text-sm truncate ${isActive ? "text-white font-semibold" : "text-slate-300 font-medium"}`}>
-                      {conv.name}
-                    </span>
+                    <div className="min-w-0 flex-1">
+                      <span className={`text-sm truncate block ${isActive ? "text-white font-semibold" : "text-slate-300 font-medium"}`}>
+                        {conv.name}
+                      </span>
+                      {firstMember?.email && (
+                        <span className="text-[9px] text-chat-muted/60 truncate block leading-tight">{firstMember.email}</span>
+                      )}
+                    </div>
                     <span className="text-[10px] text-chat-muted shrink-0">{conv.lastTime}</span>
                   </div>
                   <div className="flex items-center justify-between gap-2 mt-0.5">

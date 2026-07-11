@@ -5,13 +5,24 @@ import (
 	"time"
 )
 
-// Conversation represents a chat between two users.
+// ConversationType represents the type of conversation.
+type ConversationType string
+
+const (
+	ConversationTypeDirect ConversationType = "direct"
+	ConversationTypeGroup  ConversationType = "group"
+)
+
+// Conversation represents a chat between two users or a group.
 type Conversation struct {
-	ID        string    `json:"id"`
-	User1ID   string    `json:"user1_id"`
-	User2ID   string    `json:"user2_id"`
-	MatchID   string    `json:"match_id"`
-	CreatedAt time.Time `json:"created_at"`
+	ID        string           `json:"id"`
+	Type      ConversationType `json:"type"`
+	Name      string           `json:"name,omitempty"`
+	User1ID   string           `json:"user1_id,omitempty"`
+	User2ID   string           `json:"user2_id,omitempty"`
+	MatchID   string           `json:"match_id,omitempty"`
+	MemberIDs []string         `json:"member_ids,omitempty"`
+	CreatedAt time.Time        `json:"created_at"`
 }
 
 // Message represents a single message in a conversation.
@@ -40,6 +51,7 @@ const (
 	WSMsgTypeTyping   WSMessageType = "typing"
 	WSMsgTypeAck      WSMessageType = "ack"
 	WSMsgTypeError    WSMessageType = "error"
+	WSMsgTypeRoomReady WSMessageType = "room_ready"
 )
 
 // WSEnvelope is the outer wrapper for all WebSocket messages.
@@ -77,4 +89,22 @@ type WSIncomingMessage struct {
 	Type   WSMessageType   `json:"type"`
 	RoomID string          `json:"room_id,omitempty"`
 	Data   json.RawMessage `json:"data"`
+}
+
+// ConversationCreatedEvent is emitted to the Kafka chat-lifecycle topic when
+// a new direct conversation is created between two users.
+type ConversationCreatedEvent struct {
+	ConversationID string    `json:"conversation_id"`
+	InitiatorID    string    `json:"initiator_id"`
+	RecipientID    string    `json:"recipient_id"`
+	Timestamp      time.Time `json:"timestamp"`
+}
+
+// UserInfo represents a user's public profile cached in the chat service
+// for eventual consistency. Populated via user.created events from Kafka.
+type UserInfo struct {
+	UserID      string `json:"user_id"`
+	Email       string `json:"email"`
+	DisplayName string `json:"display_name"`
+	AvatarURL   string `json:"avatar_url,omitempty"`
 }

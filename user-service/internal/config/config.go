@@ -12,6 +12,7 @@ type Config struct {
 	GoogleClientSecret string
 	GoogleRedirectURL string
 	JWTSecret         string
+	KafkaBrokers      string
 }
 
 // Load reads configuration from environment variables.
@@ -25,6 +26,7 @@ func Load() *Config {
 		GoogleClientSecret: getEnv("GOOGLE_CLIENT_SECRET", ""),
 		GoogleRedirectURL:  getEnv("GOOGLE_REDIRECT_URL", "http://localhost:8080/v1/auth/google/callback"),
 		JWTSecret:          getEnv("JWT_SECRET", "change-me-in-production"),
+		KafkaBrokers:       getEnv("KAFKA_BROKERS", "kafka:9092"),
 	}
 }
 

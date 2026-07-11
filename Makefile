@@ -130,7 +130,7 @@ migrate-location-down:
 
 migrate-chat:
 	@echo "▸ Migrating chat-db (ScyllaDB)..."
-	@cat chat-service/migrations/001_chat.up.sql | docker compose exec -T chat-db cqlsh
+	@cat chat-service/migrations/001_chat.up.sql chat-service/migrations/002_groups.up.sql | docker compose exec -T chat-db cqlsh
 
 migrate-chat-down:
 	@echo "▸ chat-db: no down migration for ScyllaDB (drop keyspace manually if needed)"

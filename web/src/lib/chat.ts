@@ -6,8 +6,15 @@ import type { ChatMessage, Conversation, ChatUser } from "../components/chat/Cha
 
 // ─── Configuration ──────────────────────────────────────────────────────
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080"
+// REST API base URL. Defaults to same-origin (empty string) so requests go through
+// Next.js rewrites (next.config.ts) which proxy to the API gateway on port 8080,
+// avoiding CORS issues. Set NEXT_PUBLIC_API_URL to override (e.g. production).
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || ""
 const CHAT_API = `${API_BASE}/v1`
+
+// WebSocket URL — must point directly to the API gateway because Next.js
+// rewrites do NOT proxy WebSocket upgrade requests.
+const WS_BASE = process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:8080"
 
 // ─── Auth helpers ───────────────────────────────────────────────────────
 
@@ -28,8 +35,10 @@ function authFetchOptions(options: RequestInit = {}): RequestInit {
 
 export interface ChatAPIConversation {
   id: string
-  user1_id: string
-  user2_id: string
+  type?: string          // "direct" or "group"
+  name?: string          // group name (for group conversations)
+  user1_id?: string      // direct conversation
+  user2_id?: string      // direct conversation
   match_id?: string
   created_at: string
 }
@@ -49,7 +58,7 @@ export interface ChatAPIPresence {
 }
 
 export interface ChatWSEnvelope {
-  type: "chat_message" | "system" | "presence" | "typing" | "ack" | "error"
+  type: "chat_message" | "system" | "presence" | "presence_update" | "typing" | "ack" | "error" | "room_ready"
   room_id?: string
   data: Record<string, unknown>
 }
@@ -122,6 +131,23 @@ export async function sendMessageAPI(conversationId: string, content: string): P
 }
 
 /**
+ * Create a new group conversation.
+ * POST /v1/groups
+ */
+export async function createGroupConversation(name: string, members: string[]): Promise<ChatAPIConversation | null> {
+  try {
+    const res = await fetch(`${CHAT_API}/groups`, authFetchOptions({
+      method: "POST",
+      body: JSON.stringify({ name, members }),
+    }))
+    if (!res.ok) return null
+    return await res.json()
+  } catch (_) {
+    return null
+  }
+}
+
+/**
  * Get a user's presence status.
  * GET /v1/presence/{userID}
  */
@@ -155,7 +181,6 @@ export function connectChatWS(
   onMessage?: ChatWSMessageHandler,
   onStatusChange?: (status: "connecting" | "connected" | "disconnected" | "error") => void,
 ): ChatWSConnection {
-  const wsBase = API_BASE.replace(/^http/, "ws")
   const params = new URLSearchParams({ user_id: userID })
   if (roomID) params.set("room_id", roomID)
 
@@ -176,7 +201,7 @@ export function connectChatWS(
       if (token) {
         params.set("token", token)
       }
-      ws = new WebSocket(`${wsBase}/ws?${params}`)
+      ws = new WebSocket(`${WS_BASE}/ws?${params}`)
 
       ws.onopen = () => {
         if (!mounted) {
@@ -244,7 +269,70 @@ export function connectChatWS(
   }
 }
 
-// ─── Mock-to-API type converters ────────────────────────────────────────
+// ─── User Info API Calls ────────────────────────────────────────────────
+
+/**
+ * Fetch all cached users from the chat service.
+ * GET /v1/chat/users — proxied to chat-service by the API gateway.
+ */
+export async function fetchChatUsers(): Promise<ChatAPIUser[]> {
+  try {
+    const res = await fetch(`${CHAT_API}/chat/users`, authFetchOptions())
+    if (!res.ok) return []
+    return await res.json()
+  } catch {
+    return []
+  }
+}
+
+/**
+ * Fetch a single cached user by ID from the chat service.
+ * GET /v1/chat/users/{userId}
+ */
+export async function fetchChatUser(userId: string): Promise<ChatAPIUser | null> {
+  try {
+    const res = await fetch(`${CHAT_API}/chat/users/${userId}`, authFetchOptions())
+    if (!res.ok) return null
+    return await res.json()
+  } catch {
+    return null
+  }
+}
+
+export interface ChatAPIUser {
+  user_id: string
+  email: string
+  display_name: string
+  avatar_url?: string
+}
+
+/**
+ * Fetch users directly from the user-service API.
+ * GET /v1/users — proxied to user-service by the API gateway.
+ * The user-service returns a paginated response with a nested "users" array.
+ * This is used as a fallback when the chat-service cache is empty.
+ */
+export async function fetchUsersFromUserService(): Promise<ChatAPIUser[]> {
+  try {
+    const res = await fetch(`${API_BASE}/v1/users`, authFetchOptions())
+    if (!res.ok) return []
+    const data = await res.json()
+    // user-service returns { users: [...], total, page, limit }
+    const usersList = data.users || data || []
+    if (!Array.isArray(usersList)) return []
+
+    return usersList.map((u: Record<string, unknown>) => ({
+      user_id: (u.id as string) || "",
+      email: (u.email as string) || "",
+      display_name: (u.name as string) || (u.display_name as string) || "",
+      avatar_url: (u.avatar_url as string) || "",
+    }))
+  } catch {
+    return []
+  }
+}
+
+// ─── Type Converters ────────────────────────────────────────────────────
 
 /**
  * Convert mock ChatMessage to the API format for sending.
@@ -268,13 +356,95 @@ export function fromAPIMessage(msg: ChatAPIMessage, currentUserID: string): Chat
 }
 
 /**
+ * Derive a human-readable display name from a user ID string.
+ * Splits on [-_] separators and capitalizes each segment.
+ * Falls back to "User <short-id>" if parsing fails.
+ */
+export function userIdToDisplayName(userId: string): string {
+  if (!userId) return "Unknown"
+  const parts = userId.split(/[-_]/)
+  if (parts.length >= 2) {
+    return parts
+      .slice(1)
+      .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
+      .join(" ")
+      .slice(0, 20)
+  }
+  return `User ${userId.slice(0, 6)}`
+}
+
+/**
+ * Derive initials from a user ID string.
+ * Uses the segments after [-_] separators.
+ * Falls back to the first two characters of the ID.
+ */
+export function userIdToInitials(userId: string): string {
+  if (!userId) return "U"
+  const parts = userId.split(/[-_]/)
+  if (parts.length >= 2) {
+    return parts
+      .slice(1)
+      .map((p) => p[0]?.toUpperCase() || "")
+      .join("")
+      .slice(0, 2)
+  }
+  return userId.slice(0, 2).toUpperCase()
+}
+
+/**
+ * Convert a ChatAPIConversation (from the API) to the local Conversation type.
+ * Handles both direct and group conversations.
+ */
+export function fromAPIConversation(apiConv: ChatAPIConversation): Conversation {
+  if (apiConv.type === "group") {
+    const initials =
+      apiConv.name
+        ?.split(" ")
+        .map((w) => w[0])
+        .join("")
+        .toUpperCase()
+        .slice(0, 2) || "G"
+
+    return {
+      id: apiConv.id,
+      workspaceId: "",
+      name: apiConv.name || "Group",
+      avatar: initials,
+      lastMessage: "",
+      lastTime: new Date(apiConv.created_at).toLocaleString(),
+      unread: 0,
+      isActive: false,
+      members: [],
+      onlineCount: 0,
+    }
+  }
+
+  // Direct conversation
+  const otherUserId = apiConv.user2_id || ""
+  const name = userIdToDisplayName(otherUserId) || `Chat #${apiConv.id.slice(0, 4)}`
+  const initials = userIdToInitials(otherUserId)
+
+  return {
+    id: apiConv.id,
+    workspaceId: "",
+    name,
+    avatar: initials,
+    lastMessage: "",
+    lastTime: new Date(apiConv.created_at).toLocaleString(),
+    unread: 0,
+    isActive: false,
+    members: [],
+    onlineCount: 0,
+  }
+}
+
+/**
  * Get the WebSocket URL for a chat room.
  */
 export function getChatWSURL(userID: string, roomID?: string): string {
-  const wsBase = API_BASE.replace(/^http/, "ws")
   const params = new URLSearchParams({ user_id: userID })
   if (roomID) params.set("room_id", roomID)
-  return `${wsBase}/ws?${params}`
+  return `${WS_BASE}/ws?${params}`
 }
 
 

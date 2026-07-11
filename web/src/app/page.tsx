@@ -7,12 +7,18 @@ import ChatOverlay from "../components/chat/ChatOverlay"
 import WorkspaceBar from "../components/chat/WorkspaceBar"
 import { handleAuthCallback, getAuthState, loginSimulated, wasRecentlyLoggedOut } from "../lib/auth"
 import { useChatStore } from "../components/chat/ChatStore"
+import { useChatHandshake } from "../lib/useChatHandshake"
 
 const MapView = dynamic(() => import("../components/MapView"), { ssr: false })
 
 function AuthInitializer() {
   const searchParams = useSearchParams()
   const setCurrentUserId = useChatStore((s) => s.setCurrentUserId)
+  const currentUserId = useChatStore((s) => s.currentUser.id)
+
+  // Global WebSocket handshake — establishes a persistent connection for
+  // presence updates and async room_ready notifications.
+  useChatHandshake(currentUserId)
 
   useEffect(() => {
     // Check if returning from Google OAuth callback
@@ -38,15 +44,15 @@ function AuthInitializer() {
       return
     }
 
-    // Skip auto-login if the user just logged out
+    // Skip auto-login if the user just logged out, is already authenticated,
+    // or has local registered users (let them choose from the login page)
     if (wasRecentlyLoggedOut()) {
       return
     }
 
-    // Auto-login with simulated user for quick dev demos
-    loginSimulated("user-sim-001").then((simUser) => {
-      setCurrentUserId(simUser.id, simUser.name)
-    })
+    // No session found & no logged-out flag — redirect to login page
+    // so users can sign in with their email.
+    window.location.href = "/login"
   }, [searchParams, setCurrentUserId])
 
   return null

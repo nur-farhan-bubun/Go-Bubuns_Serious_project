@@ -13,6 +13,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/ride-sharing/user-service/internal/domain"
+	userevent "github.com/ride-sharing/user-service/internal/kafka"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 )
@@ -57,6 +58,12 @@ type PhotoRepository interface {
 	SetPrimary(ctx context.Context, photoID, userID string) error
 }
 
+// EventPublisher defines the contract for publishing user lifecycle events.
+type EventPublisher interface {
+	Publish(ctx context.Context, event *userevent.UserEvent) error
+	Close() error
+}
+
 // Service handles user business logic.
 type Service struct {
 	repo             UserRepository
@@ -66,10 +73,11 @@ type Service struct {
 	photoRepo        PhotoRepository
 	oauth2           *oauth2.Config
 	jwtSecret        []byte
+	eventPublisher   EventPublisher
 }
 
 // New creates a new user service.
-func New(repo UserRepository, profileRepo ProfileRepository, datingRepo DatingProfileRepository, workerRepo WorkerProfileRepository, photoRepo PhotoRepository, googleClientID, googleClientSecret, googleRedirectURL, jwtSecret string) *Service {
+func New(repo UserRepository, profileRepo ProfileRepository, datingRepo DatingProfileRepository, workerRepo WorkerProfileRepository, photoRepo PhotoRepository, googleClientID, googleClientSecret, googleRedirectURL, jwtSecret string, eventPublisher EventPublisher) *Service {
 	return &Service{
 		repo:        repo,
 		profileRepo: profileRepo,
@@ -83,7 +91,8 @@ func New(repo UserRepository, profileRepo ProfileRepository, datingRepo DatingPr
 			Scopes:       []string{"https://www.googleapis.com/auth/userinfo.email", "https://www.googleapis.com/auth/userinfo.profile"},
 			Endpoint:     google.Endpoint,
 		},
-		jwtSecret: []byte(jwtSecret),
+		jwtSecret:      []byte(jwtSecret),
+		eventPublisher: eventPublisher,
 	}
 }
 
@@ -94,9 +103,28 @@ func (s *Service) GetByID(ctx context.Context, id string) (*domain.User, error) 
 	return s.repo.GetByID(ctx, id)
 }
 
-// Create creates a new user.
-func (s *Service) Create(ctx context.Context, user *domain.User) (*domain.UserResponse, error) {
-	return s.repo.Create(ctx, user)
+// Create creates a new user, optionally creates a profile, and publishes
+// a user.created event for eventual consistency with downstream services.
+func (s *Service) Create(ctx context.Context, user *domain.User, displayName, avatarURL string) (*domain.UserResponse, error) {
+	resp, err := s.repo.Create(ctx, user)
+	if err != nil {
+		return nil, err
+	}
+
+	// Create profile if display info was provided (e.g. from email/password registration)
+	if displayName != "" || avatarURL != "" {
+		_ = s.profileRepo.Upsert(ctx, &domain.Profile{
+			UserID:      user.ID,
+			DisplayName: displayName,
+			AvatarURL:   avatarURL,
+			UpdatedAt:   time.Now().UTC(),
+		})
+	}
+
+	// Publish user.created event for eventual consistency
+	s.publishUserCreated(ctx, user.ID, user.Email, displayName, avatarURL)
+
+	return resp, nil
 }
 
 // Update updates a user.
@@ -318,6 +346,9 @@ func (s *Service) findOrCreateUser(ctx context.Context, googleUser *domain.Googl
 		return nil, fmt.Errorf("failed to create profile: %w", err)
 	}
 
+	// Publish user.created event for eventual consistency
+	s.publishUserCreated(ctx, user.ID, user.Email, profile.DisplayName, profile.AvatarURL)
+
 	return user, nil
 }
 
@@ -357,6 +388,26 @@ func (s *Service) syncGoogleProfile(ctx context.Context, user *domain.User, goog
 	return s.repo.Update(ctx, user)
 }
 
+// publishUserCreated publishes a user.created event to Kafka (fire-and-forget).
+// If the event publisher is not configured, this is a no-op.
+func (s *Service) publishUserCreated(ctx context.Context, userID, email, displayName, avatarURL string) {
+	if s.eventPublisher == nil {
+		return
+	}
+	event := &userevent.UserEvent{
+		Type:        userevent.UserCreated,
+		UserID:      userID,
+		Email:       email,
+		DisplayName: displayName,
+		AvatarURL:   avatarURL,
+	}
+	if err := s.eventPublisher.Publish(ctx, event); err != nil {
+		// Log but don't fail — eventual consistency means the chat-service
+		// will pick up the user on its next sync.
+		_ = err
+	}
+}
+
 func (s *Service) generateJWT(user *domain.User) (string, error) {
 	now := time.Now()
 	claims := jwt.MapClaims{
@@ -368,6 +419,37 @@ func (s *Service) generateJWT(user *domain.User) (string, error) {
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	return token.SignedString(s.jwtSecret)
+}
+
+// Backfill publishes user.created events for all existing users.
+// This is called on startup so previously-registered users appear in the
+// chat-service user cache (eventual consistency backfill).
+func (s *Service) Backfill(ctx context.Context) error {
+	if s.eventPublisher == nil {
+		return nil
+	}
+	page := 1
+	pageSize := 100
+	for {
+		users, total, err := s.repo.List(ctx, page, pageSize)
+		if err != nil {
+			return fmt.Errorf("backfill: list page %d: %w", page, err)
+		}
+		for _, user := range users {
+			displayName := ""
+			avatarURL := ""
+			if profile, err := s.profileRepo.GetByUserID(ctx, user.ID); err == nil && profile != nil {
+				displayName = profile.DisplayName
+				avatarURL = profile.AvatarURL
+			}
+			s.publishUserCreated(ctx, user.ID, user.Email, displayName, avatarURL)
+		}
+		if page*pageSize >= total {
+			break
+		}
+		page++
+	}
+	return nil
 }
 
 func generateID() string {

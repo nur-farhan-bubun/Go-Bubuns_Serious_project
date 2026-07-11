@@ -11,8 +11,9 @@ import (
 )
 
 const (
-	presencePrefix = "presence:"
-	presenceTTL    = 2 * time.Minute
+	presencePrefix     = "presence:"
+	presenceOnlineKey  = "presence:online"
+	presenceTTL        = 2 * time.Minute
 )
 
 // PresenceRepository handles user presence data in Redis.
@@ -48,9 +49,23 @@ func (r *PresenceRepository) Close() error {
 }
 
 // SetPresence updates a user's presence status.
+// Uses both:
+//  1. HSET presence:online userID timestamp — for fast online user lookups
+//  2. SET presence:userID {json} — for full presence data retrieval
 func (r *PresenceRepository) SetPresence(ctx context.Context, presence *domain.Presence) error {
-	key := presencePrefix + presence.UserID
+	// HSET for the online hash (fast lookup of who's online)
+	now := time.Now().Unix()
+	if err := r.client.HSet(ctx, presenceOnlineKey, presence.UserID, now).Err(); err != nil {
+		return fmt.Errorf("failed to hset presence online: %w", err)
+	}
 
+	// Set expiry on the hash so stale entries are cleaned up
+	if err := r.client.Expire(ctx, presenceOnlineKey, presenceTTL).Err(); err != nil {
+		return fmt.Errorf("failed to set expiry on presence:online: %w", err)
+	}
+
+	// Full presence JSON for detailed retrieval
+	key := presencePrefix + presence.UserID
 	data, err := json.Marshal(presence)
 	if err != nil {
 		return fmt.Errorf("failed to marshal presence: %w", err)

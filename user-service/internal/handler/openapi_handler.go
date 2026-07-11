@@ -69,9 +69,19 @@ func (h *OpenAPIHandler) CreateUser(ctx echo.Context) error {
 	}
 
 	now := time.Now().UTC()
-	domainUser := toDomainUser(&req, uuid.New().String(), now)
+	userID := uuid.New().String()
+	domainUser := toDomainUser(&req, userID, now)
 
-	resp, err := h.userSvc.Create(ctx.Request().Context(), domainUser)
+	displayName := ""
+	avatarURL := ""
+	if req.DisplayName != nil && *req.DisplayName != "" {
+		displayName = *req.DisplayName
+	}
+	if req.AvatarUrl != nil && *req.AvatarUrl != "" {
+		avatarURL = *req.AvatarUrl
+	}
+
+	resp, err := h.userSvc.Create(ctx.Request().Context(), domainUser, displayName, avatarURL)
 	if err != nil {
 		return ctx.JSON(http.StatusInternalServerError, api.ErrorResponse{Error: err.Error()})
 	}

@@ -3,35 +3,22 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"log/slog"
 	"net/http"
-	"sync"
 	"time"
 
-	"github.com/gorilla/websocket"
 	"github.com/ride-sharing/chat-service/api"
 	"github.com/labstack/echo/v4"
-	
+
 	"github.com/ride-sharing/chat-service/internal/config"
 	"github.com/ride-sharing/chat-service/internal/domain"
 	kafkainfra "github.com/ride-sharing/chat-service/internal/kafka"
+	"github.com/ride-sharing/chat-service/internal/store"
 	scyllarepo "github.com/ride-sharing/chat-service/internal/repository/scylladb"
 	"github.com/ride-sharing/chat-service/internal/service"
 	ws "github.com/ride-sharing/chat-service/internal/websocket"
 )
-
-// envelopePool reduces GC pressure by recycling WSEnvelope structs that are
-// allocated on every incoming chat/typing message, used once for json.Marshal,
-// then discarded.
-var envelopePool = sync.Pool{
-	New: func() any { return &domain.WSEnvelope{} },
-}
-
-// incomingMsgPool recycles WSIncomingMessage structs that back the hot path
-// for parsing every WebSocket frame.
-var incomingMsgPool = sync.Pool{
-	New: func() any { return &domain.WSIncomingMessage{} },
-}
 
 // Compile-time check that OpenAPIHandler implements api.ServerInterface.
 var _ api.ServerInterface = (*OpenAPIHandler)(nil)
@@ -40,16 +27,26 @@ var _ api.ServerInterface = (*OpenAPIHandler)(nil)
 // manages WebSocket connections via a sharded Hub, publishing chat
 // events to Kafka for cross-instance fan-out.
 type OpenAPIHandler struct {
-	cfg      *config.Config
-	svc      *service.Service
-	hub      *ws.Hub
-	producer *kafkainfra.Producer
-	log      *slog.Logger
+	cfg             *config.Config
+	svc             *service.Service
+	hub             *ws.Hub
+	producer        *kafkainfra.Producer
+	log             *slog.Logger
+	userStore       *store.MemoryUserStore
+	httpClient      *http.Client
 }
 
 // NewOpenAPIHandler creates a new handler.
-func NewOpenAPIHandler(cfg *config.Config, svc *service.Service, hub *ws.Hub, producer *kafkainfra.Producer, log *slog.Logger) *OpenAPIHandler {
-	return &OpenAPIHandler{cfg: cfg, svc: svc, hub: hub, producer: producer, log: log}
+func NewOpenAPIHandler(cfg *config.Config, svc *service.Service, hub *ws.Hub, producer *kafkainfra.Producer, log *slog.Logger, userStore *store.MemoryUserStore) *OpenAPIHandler {
+	return &OpenAPIHandler{
+		cfg:        cfg,
+		svc:        svc,
+		hub:        hub,
+		producer:   producer,
+		log:        log,
+		userStore:  userStore,
+		httpClient: &http.Client{Timeout: 5 * time.Second},
+	}
 }
 
 // errResp returns a map suitable for JSON error responses.
@@ -89,6 +86,10 @@ func (h *OpenAPIHandler) GetConversations(ctx echo.Context) error {
 }
 
 // CreateConversation handles POST /v1/conversations.
+// Checks for an existing conversation between the two users first, then:
+//  1. Creates a new conversation if none exists.
+//  2. Emits a ConversationCreatedEvent to the Kafka chat-lifecycle topic.
+//  3. Broadcasts a room_ready event to the recipient via WebSocket.
 func (h *OpenAPIHandler) CreateConversation(ctx echo.Context) error {
 	userID := h.extractUserID(ctx)
 	if userID == "" {
@@ -97,7 +98,7 @@ func (h *OpenAPIHandler) CreateConversation(ctx echo.Context) error {
 
 	var req api.CreateConversationRequest
 	if err := ctx.Bind(&req); err != nil {
-		return ctx.JSON(http.StatusBadRequest, errResp("invalid request body: " + err.Error()))
+		return ctx.JSON(http.StatusBadRequest, errResp("invalid request body: "+err.Error()))
 	}
 
 	if req.UserId == "" {
@@ -107,6 +108,19 @@ func (h *OpenAPIHandler) CreateConversation(ctx echo.Context) error {
 	// Validate that the other user is not the same as the current user
 	if req.UserId == userID {
 		return ctx.JSON(http.StatusBadRequest, errResp("cannot create conversation with yourself"))
+	}
+
+	// Check if conversation already exists between these two users
+	existing, err := h.svc.FindExistingConversation(ctx.Request().Context(), userID, req.UserId)
+	if err != nil {
+		h.log.Error("failed to check existing conversation", slog.String("error", err.Error()))
+		// Proceed to create anyway — the check is best-effort
+	}
+	if existing != nil {
+		h.log.Info("returning existing conversation",
+			slog.String("conversation_id", existing.ID),
+		)
+		return ctx.JSON(http.StatusOK, toAPIConversation(existing))
 	}
 
 	matchID := ""
@@ -128,6 +142,43 @@ func (h *OpenAPIHandler) CreateConversation(ctx echo.Context) error {
 		return ctx.JSON(http.StatusInternalServerError, errResp("failed to create conversation"))
 	}
 
+	// Emit ConversationCreatedEvent to the Kafka chat-lifecycle topic
+	lifecycleEvent := &domain.ConversationCreatedEvent{
+		ConversationID: conv.ID,
+		InitiatorID:    userID,
+		RecipientID:    req.UserId,
+		Timestamp:      now,
+	}
+
+	if h.producer != nil {
+		rawData, err := json.Marshal(lifecycleEvent)
+		if err != nil {
+			h.log.Error("failed to marshal ConversationCreatedEvent",
+				slog.String("error", err.Error()),
+			)
+		} else {
+			if err := h.producer.PublishToTopic(ctx.Request().Context(), kafkainfra.LifecycleTopic, &kafkainfra.Message{
+				RoomID: conv.ID,
+				Type:   domain.WSMsgTypeRoomReady,
+				Data:   rawData,
+			}); err != nil {
+				h.log.Warn("failed to emit ConversationCreatedEvent to Kafka",
+					slog.String("error", err.Error()),
+				)
+			} else {
+				h.log.Info("emitted ConversationCreatedEvent to Kafka",
+					slog.String("conversation_id", conv.ID),
+					slog.String("initiator_id", userID),
+					slog.String("recipient_id", req.UserId),
+					slog.String("topic", kafkainfra.LifecycleTopic),
+				)
+			}
+		}
+	}
+
+	// Broadcast room_ready to the recipient if they're globally connected
+	h.broadcastRoomReady(req.UserId, conv.ID)
+
 	return ctx.JSON(http.StatusCreated, toAPIConversation(conv))
 }
 
@@ -143,7 +194,7 @@ func (h *OpenAPIHandler) GetMessages(ctx echo.Context, id string, params api.Get
 	if err != nil {
 		return ctx.JSON(http.StatusNotFound, errResp("conversation not found"))
 	}
-	if conv.User1ID != userID && conv.User2ID != userID {
+	if !h.svc.IsConversationParticipant(ctx.Request().Context(), conv, userID) {
 		return ctx.JSON(http.StatusForbidden, errResp("not a participant in this conversation"))
 	}
 
@@ -189,7 +240,7 @@ func (h *OpenAPIHandler) SendMessage(ctx echo.Context, id string) error {
 	if err != nil {
 		return ctx.JSON(http.StatusNotFound, errResp("conversation not found"))
 	}
-	if conv.User1ID != userID && conv.User2ID != userID {
+	if !h.svc.IsConversationParticipant(ctx.Request().Context(), conv, userID) {
 		return ctx.JSON(http.StatusForbidden, errResp("not a participant in this conversation"))
 	}
 
@@ -212,64 +263,64 @@ func (h *OpenAPIHandler) SendMessage(ctx echo.Context, id string) error {
 	return ctx.JSON(http.StatusCreated, toAPIMessage(msg))
 }
 
-// broadcastToRoom marshals a chat event and delivers it to all locally-connected
-// WebSocket clients in the room, using the pool for zero-allocation.
-func (h *OpenAPIHandler) broadcastToRoom(conversationID string, chatMsg domain.WSChatMessage) {
-	envelope := envelopePool.Get().(*domain.WSEnvelope)
-	envelope.Type = domain.WSMsgTypeChat
-	envelope.RoomID = conversationID
-	envelope.Data = chatMsg
+// ─── Group Conversation Endpoints ───────────────────────────────────────
 
-	payload, err := json.Marshal(envelope)
-	envelope.Type = ""
-	envelope.RoomID = ""
-	envelope.Data = nil
-	envelopePool.Put(envelope)
-
-	if err != nil {
-		h.log.Error("failed to marshal chat envelope", slog.String("error", err.Error()))
-		return
-	}
-	h.hub.SendToRoom(conversationID, payload)
+// CreateGroupConversationRequest is the request body for creating a group.
+type CreateGroupConversationRequest struct {
+	Name    string   `json:"name"`
+	Members []string `json:"members"`
 }
 
-// broadcastNewMessage sends a new message to all WebSocket clients in the room.
-// It first attempts Kafka (cross-instance fan-out), then falls back to local
-// broadcast when Kafka is unavailable or fails.
-func (h *OpenAPIHandler) broadcastNewMessage(conversationID string, msg *domain.Message) {
-	chatMsg := domain.WSChatMessage{
-		MessageID:      msg.ID,
-		ConversationID: msg.ConversationID,
-		SenderID:       msg.SenderID,
-		Content:        msg.Content,
-		CreatedAt:      msg.CreatedAt,
+// CreateGroupConversation handles POST /v1/groups.
+func (h *OpenAPIHandler) CreateGroupConversation(ctx echo.Context) error {
+	userID := h.extractUserID(ctx)
+	if userID == "" {
+		return ctx.JSON(http.StatusUnauthorized, errResp("missing user identification"))
 	}
 
-	rawData, err := json.Marshal(chatMsg)
-	if err != nil {
-		h.log.Error("failed to marshal chat broadcast", slog.String("error", err.Error()))
-		return
+	var req CreateGroupConversationRequest
+	if err := ctx.Bind(&req); err != nil {
+		return ctx.JSON(http.StatusBadRequest, errResp("invalid request body: "+err.Error()))
 	}
 
-	if h.producer != nil {
-		if err := h.producer.Publish(context.Background(), &kafkainfra.Message{
-			RoomID: conversationID,
-			Type:   domain.WSMsgTypeChat,
-			Data:   rawData,
-		}); err != nil {
-			h.log.Warn("kafka publish failed, falling back to local broadcast",
-				slog.String("error", err.Error()),
-			)
-			// Fallback: broadcast locally so the message still reaches
-			// WebSocket clients connected to this instance.
-			h.broadcastToRoom(conversationID, chatMsg)
+	if req.Name == "" {
+		return ctx.JSON(http.StatusBadRequest, errResp("name is required"))
+	}
+	if len(req.Members) == 0 {
+		return ctx.JSON(http.StatusBadRequest, errResp("at least one member is required"))
+	}
+
+	// Build member list: include the creator + specified members, deduplicate
+	memberSet := make(map[string]bool)
+	memberSet[userID] = true
+	for _, m := range req.Members {
+		if m != "" {
+			memberSet[m] = true
 		}
-		// Kafka publish succeeded — the consumer on every instance will
-		// fan out the message locally (handled by the consumer loop).
-	} else {
-		h.broadcastToRoom(conversationID, chatMsg)
 	}
+	memberIDs := make([]string, 0, len(memberSet))
+	for m := range memberSet {
+		memberIDs = append(memberIDs, m)
+	}
+
+	now := time.Now().UTC()
+	conv := &domain.Conversation{
+		ID:        scyllarepo.NewUUID(),
+		Type:      domain.ConversationTypeGroup,
+		Name:      req.Name,
+		MemberIDs: memberIDs,
+		CreatedAt: now,
+	}
+
+	if err := h.svc.CreateGroupConversation(ctx.Request().Context(), conv); err != nil {
+		h.log.Error("failed to create group conversation", slog.String("error", err.Error()))
+		return ctx.JSON(http.StatusInternalServerError, errResp("failed to create group"))
+	}
+
+	return ctx.JSON(http.StatusCreated, toAPIConversation(conv))
 }
+
+
 
 // GetPresence handles GET /v1/presence/{userID}.
 func (h *OpenAPIHandler) GetPresence(ctx echo.Context, userID string) error {
@@ -287,215 +338,166 @@ func (h *OpenAPIHandler) GetPresence(ctx echo.Context, userID string) error {
 	})
 }
 
-// upgrader is configured with tuned buffer sizes and compression off by default.
-var upgrader = websocket.Upgrader{
-	ReadBufferSize:  4096,
-	WriteBufferSize: 4096,
-	EnableCompression: false,
-	CheckOrigin:       func(r *http.Request) bool { return true },
+// fetchUsersFromUserService calls the user-service API to sync users
+// into the local cache when Kafka is unavailable or hasn't delivered yet.
+func (h *OpenAPIHandler) fetchUsersFromUserService(ctx context.Context) ([]api.UserInfo, error) {
+	url := h.cfg.UserServiceURL + "/v1/users"
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := h.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	// user-service returns a ListUsersResponse with a nested "users" array
+	var listResp struct {
+		Users *[]struct {
+			ID    string  `json:"id"`
+			Email string  `json:"email"`
+			Profile *struct {
+				DisplayName string `json:"display_name"`
+				AvatarURL   string `json:"avatar_url"`
+			} `json:"profile"`
+		} `json:"users"`
+		Total *int `json:"total"`
+	}
+
+	if err := json.Unmarshal(body, &listResp); err != nil {
+		return nil, err
+	}
+
+	result := make([]api.UserInfo, 0)
+	if listResp.Users != nil {
+		for _, u := range *listResp.Users {
+			displayName := u.ID
+			avatarURL := ""
+			if u.Profile != nil {
+				if u.Profile.DisplayName != "" {
+					displayName = u.Profile.DisplayName
+				}
+				avatarURL = u.Profile.AvatarURL
+			}
+			result = append(result, api.UserInfo{
+				UserId:      &u.ID,
+				Email:       &u.Email,
+				DisplayName: &displayName,
+				AvatarUrl:   &avatarURL,
+			})
+			// Seed local cache so subsequent requests don't need to re-fetch
+			_ = h.userStore.Upsert(ctx, &domain.UserInfo{
+				UserID:      u.ID,
+				Email:       u.Email,
+				DisplayName: displayName,
+				AvatarURL:   avatarURL,
+			})
+		}
+		h.log.Info("seeded user cache from user-service API",
+			slog.Int("count", len(*listResp.Users)),
+		)
+	}
+
+	return result, nil
 }
 
-// HandleWebSocket upgrades the HTTP connection to WebSocket, creates a Client,
-// registers it with the Hub, and starts the read/write pump goroutines.
-func (h *OpenAPIHandler) HandleWebSocket(ctx echo.Context) error {
-	userID := ctx.QueryParam("user_id")
+// ─── User Info endpoints ──────────────────────────────────────────────
+
+// GetUsers handles GET /v1/users — returns all users from the local cache
+// (populated by user-events Kafka topic) with a fallback to the user-service
+// API when the cache is empty or Kafka is unavailable.
+func (h *OpenAPIHandler) GetUsers(ctx echo.Context) error {
+	users, err := h.userStore.List(ctx.Request().Context())
+	if err != nil {
+		h.log.Error("failed to list users from cache", slog.String("error", err.Error()))
+		return ctx.JSON(http.StatusInternalServerError, errResp("failed to list users"))
+	}
+
+	// If cache has data, return it directly (eventual consistency path via Kafka)
+	if len(users) > 0 {
+		result := make([]api.UserInfo, 0, len(users))
+		for _, u := range users {
+			result = append(result, toAPIUserInfo(u))
+		}
+		return ctx.JSON(http.StatusOK, result)
+	}
+
+	// Cache is empty — fall back to fetching directly from user-service API
+	h.log.Info("user cache empty, falling back to user-service API")
+	fallbackUsers, err := h.fetchUsersFromUserService(ctx.Request().Context())
+	if err != nil {
+		h.log.Error("failed to fetch users from user-service", slog.String("error", err.Error()))
+		return ctx.JSON(http.StatusOK, []api.UserInfo{}) // return empty rather than error
+	}
+
+	return ctx.JSON(http.StatusOK, fallbackUsers)
+}
+
+// GetUserByID handles GET /v1/chat/users/:id — returns a single cached user.
+func (h *OpenAPIHandler) GetUserByID(ctx echo.Context, userID string) error {
+	user, err := h.userStore.GetByID(ctx.Request().Context(), userID)
+	if err != nil {
+		return ctx.JSON(http.StatusInternalServerError, errResp("failed to get user"))
+	}
+	if user == nil {
+		return ctx.JSON(http.StatusNotFound, errResp("user not found"))
+	}
+	return ctx.JSON(http.StatusOK, toAPIUserInfo(user))
+}
+
+// GetUserByIDHandler wraps GetUserByID as an echo.HandlerFunc by extracting
+// the user ID from the URL path parameter.
+func (h *OpenAPIHandler) GetUserByIDHandler(ctx echo.Context) error {
+	userID := ctx.Param("id")
 	if userID == "" {
-		return ctx.String(http.StatusBadRequest, "user_id query parameter is required")
+		return ctx.JSON(http.StatusBadRequest, errResp("missing user id"))
 	}
-
-	roomID := ctx.QueryParam("room_id") // optional — client may join later
-
-	conn, err := upgrader.Upgrade(ctx.Response(), ctx.Request(), nil)
-	if err != nil {
-		h.log.Error("websocket upgrade failed", slog.String("error", err.Error()))
-		return err
-	}
-
-	client := ws.NewClient(h.hub, conn, userID, h.log)
-	h.hub.Register(client)
-
-	if roomID != "" {
-		h.hub.JoinRoom(client, roomID)
-	}
-
-	// Update presence to online
-	_ = h.svc.SetPresence(ctx.Request().Context(), &domain.Presence{
-		UserID:   userID,
-		Status:   "online",
-		LastSeen: time.Now(),
-	})
-
-	// Spawn the single-writer goroutine.
-	go client.WritePump()
-
-	// Spawn the reader goroutine with a handler that broadcasts to the room.
-	go client.ReadPump(func(c *ws.Client, message []byte) {
-		h.handleIncomingMessage(c, message)
-	})
-
-	return nil
+	return h.GetUserByID(ctx, userID)
 }
 
-// handleIncomingMessage processes a raw message from a WebSocket client.
-func (h *OpenAPIHandler) handleIncomingMessage(client *ws.Client, raw []byte) {
-	incoming := incomingMsgPool.Get().(*domain.WSIncomingMessage)
-	if err := json.Unmarshal(raw, incoming); err != nil {
-		h.log.Error("invalid message from client",
-			slog.String("user_id", client.UserID),
-			slog.String("error", err.Error()),
-		)
-		env := pooledErrorEnvelope("invalid message format")
-		_ = client.SendJSON(env)
-		env.Type = ""
-		env.RoomID = ""
-		env.Data = nil
-		envelopePool.Put(env)
-		*incoming = domain.WSIncomingMessage{}
-		incomingMsgPool.Put(incoming)
-		return
-	}
-
-	roomID := incoming.RoomID
-	if roomID == "" {
-		if rid, ok := client.RoomID.Load().(string); ok {
-			roomID = rid
-		}
-	}
-	if roomID == "" {
-		*incoming = domain.WSIncomingMessage{}
-		incomingMsgPool.Put(incoming)
-		h.log.Warn("message dropped — no room assigned",
-			slog.String("user_id", client.UserID),
-		)
-		return
-	}
-
-	switch incoming.Type {
-	case domain.WSMsgTypeChat:
-		h.handleIncomingChat(client, roomID, incoming.Data)
-	case domain.WSMsgTypeTyping:
-		h.handleIncomingTyping(client, roomID, incoming.Data)
-	default:
-		h.log.Warn("unknown message type",
-			slog.String("user_id", client.UserID),
-			slog.String("type", string(incoming.Type)),
-		)
-	}
-
-	*incoming = domain.WSIncomingMessage{}
-	incomingMsgPool.Put(incoming)
-}
-
-// pooledErrorEnvelope returns a pooled WSEnvelope set to an error message.
-// The caller must return the envelope to the pool after SendJSON completes.
-func pooledErrorEnvelope(msg string) *domain.WSEnvelope {
-	env := envelopePool.Get().(*domain.WSEnvelope)
-	env.Type = domain.WSMsgTypeError
-	env.RoomID = ""
-	env.Data = map[string]string{"error": msg}
-	return env
-}
-
-// handleIncomingChat processes an incoming chat message, publishes it to
-// Kafka for cross-instance fan-out, and persists to ScyllaDB.
-func (h *OpenAPIHandler) handleIncomingChat(client *ws.Client, roomID string, data json.RawMessage) {
-	var chatData struct {
-		Content string `json:"content"`
-	}
-	if err := json.Unmarshal(data, &chatData); err != nil {
-		env := pooledErrorEnvelope("invalid chat message format")
-		_ = client.SendJSON(env)
-		env.Type = ""
-		env.RoomID = ""
-		env.Data = nil
-		envelopePool.Put(env)
-		return
-	}
-
-	// Persist message to ScyllaDB
-	now := time.Now()
-	msg := &domain.Message{
-		ConversationID: roomID,
-		SenderID:       client.UserID,
-		Content:        chatData.Content,
-		CreatedAt:      now,
-	}
-
-	if err := h.svc.SendMessage(context.Background(), msg); err != nil {
-		h.log.Error("failed to persist chat message", slog.String("error", err.Error()))
-		// Continue to broadcast even if persistence fails — the message
-		// will be delivered via WebSocket but lost on reconnect.
-	}
-
-	chatMsg := domain.WSChatMessage{
-		MessageID:      msg.ID,
-		ConversationID: roomID,
-		SenderID:       client.UserID,
-		Content:        chatData.Content,
-		CreatedAt:      now,
-	}
-
-	rawData, err := json.Marshal(chatMsg)
-	if err != nil {
-		h.log.Error("failed to marshal chat data", slog.String("error", err.Error()))
-		return
-	}
-
-	// Publish to Kafka for cross-instance fan-out. If Kafka is unavailable,
-	// fall back to local broadcast so connected clients still receive the message.
-	if h.producer != nil {
-		if err := h.producer.Publish(context.Background(), &kafkainfra.Message{
-			RoomID: roomID,
-			Type:   domain.WSMsgTypeChat,
-			Data:   rawData,
-		}); err != nil {
-			h.log.Warn("kafka publish failed, falling back to local broadcast",
-				slog.String("error", err.Error()),
-			)
-			h.broadcastToRoom(roomID, chatMsg)
-		}
-	} else {
-		h.broadcastToRoom(roomID, chatMsg)
+func toAPIUserInfo(u *domain.UserInfo) api.UserInfo {
+	return api.UserInfo{
+		UserId:      &u.UserID,
+		Email:       &u.Email,
+		DisplayName: &u.DisplayName,
+		AvatarUrl:   &u.AvatarURL,
 	}
 }
 
-// handleIncomingTyping processes a typing indicator and fans it out.
-func (h *OpenAPIHandler) handleIncomingTyping(client *ws.Client, roomID string, data json.RawMessage) {
-	var typingData domain.WSTypingIndicator
-	if err := json.Unmarshal(data, &typingData); err != nil {
-		return
-	}
-	typingData.UserID = client.UserID
 
-	envelope := envelopePool.Get().(*domain.WSEnvelope)
-	envelope.Type = domain.WSMsgTypeTyping
-	envelope.RoomID = roomID
-	envelope.Data = typingData
-
-	payload, err := json.Marshal(envelope)
-	envelope.Type = ""
-	envelope.RoomID = ""
-	envelope.Data = nil
-	envelopePool.Put(envelope)
-
-	if err != nil {
-		return
-	}
-
-	h.hub.SendToRoom(roomID, payload)
-}
 
 // ─── Conversion Helpers ─────────────────────────────────────────────────────
 
 func toAPIConversation(c *domain.Conversation) api.Conversation {
 	id := c.ID
+	createdAt := c.CreatedAt
+
+	// For group conversations, include name and type
+	if c.Type == domain.ConversationTypeGroup {
+		convType := string(c.Type)
+		return api.Conversation{
+			Id:        &id,
+			Type:      &convType,
+			Name:      &c.Name,
+			CreatedAt: &createdAt,
+		}
+	}
+
+	// Direct conversation
 	user1ID := c.User1ID
 	user2ID := c.User2ID
-	createdAt := c.CreatedAt
 	matchID := c.MatchID
-
+	convType := string(c.Type)
 	return api.Conversation{
 		Id:        &id,
+		Type:      &convType,
 		User1Id:   &user1ID,
 		User2Id:   &user2ID,
 		MatchId:   &matchID,

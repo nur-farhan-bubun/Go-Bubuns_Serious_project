@@ -50,7 +50,7 @@ func (r *Repository) Close() {
 	r.session.Close()
 }
 
-// CreateConversation creates a new conversation.
+// CreateConversation creates a new direct conversation.
 func (r *Repository) CreateConversation(ctx context.Context, conv *domain.Conversation) error {
 	// match_id is nullable; pass nil when empty so ScyllaDB stores it as null.
 	var matchID interface{} = nil
@@ -64,8 +64,89 @@ func (r *Repository) CreateConversation(ctx context.Context, conv *domain.Conver
 	return q.Exec()
 }
 
+// CreateGroupConversation creates a new group conversation and adds all members.
+func (r *Repository) CreateGroupConversation(ctx context.Context, conv *domain.Conversation) error {
+	// Insert into group_conversations table
+	q := r.session.Query(
+		`INSERT INTO group_conversations (id, name, created_at) VALUES (?, ?, ?)`,
+		conv.ID, conv.Name, conv.CreatedAt,
+	).WithContext(ctx)
+	if err := q.Exec(); err != nil {
+		return fmt.Errorf("failed to create group conversation: %w", err)
+	}
+
+	// Add all members
+	for _, memberID := range conv.MemberIDs {
+		if err := r.AddGroupMember(ctx, conv.ID, memberID, conv.CreatedAt); err != nil {
+			return fmt.Errorf("failed to add member %s: %w", memberID, err)
+		}
+	}
+
+	return nil
+}
+
+// FindExistingConversation checks if a direct conversation already exists
+// between two users (in either order). Returns nil if none found.
+func (r *Repository) FindExistingConversation(ctx context.Context, user1ID, user2ID string) (*domain.Conversation, error) {
+	// Normalize: always order the user IDs to deduplicate (user1_id < user2_id alphabetically
+	// is not guaranteed by the DB schema, so we query both directions).
+
+	// Check: user1 = user1ID, user2 = user2ID
+	var conv domain.Conversation
+	var matchID *string
+	q := r.session.Query(
+		`SELECT id, user1_id, user2_id, match_id, created_at FROM conversations WHERE user1_id = ? AND user2_id = ? ALLOW FILTERING`,
+		user1ID, user2ID,
+	).WithContext(ctx)
+
+	err := q.Scan(&conv.ID, &conv.User1ID, &conv.User2ID, &matchID, &conv.CreatedAt)
+	if err == nil {
+		conv.Type = domain.ConversationTypeDirect
+		if matchID != nil {
+			conv.MatchID = *matchID
+		}
+		return &conv, nil
+	}
+	if err != nil && err != gocql.ErrNotFound {
+		return nil, fmt.Errorf("failed to query existing conversation: %w", err)
+	}
+
+	// Check: user1 = user2ID, user2 = user1ID
+	q = r.session.Query(
+		`SELECT id, user1_id, user2_id, match_id, created_at FROM conversations WHERE user1_id = ? AND user2_id = ? ALLOW FILTERING`,
+		user2ID, user1ID,
+	).WithContext(ctx)
+
+	var conv2 domain.Conversation
+	var matchID2 *string
+	err = q.Scan(&conv2.ID, &conv2.User1ID, &conv2.User2ID, &matchID2, &conv2.CreatedAt)
+	if err == nil {
+		conv2.Type = domain.ConversationTypeDirect
+		if matchID2 != nil {
+			conv2.MatchID = *matchID2
+		}
+		return &conv2, nil
+	}
+	if err != nil && err != gocql.ErrNotFound {
+		return nil, fmt.Errorf("failed to query existing conversation (reversed): %w", err)
+	}
+
+	return nil, nil // no existing conversation found
+}
+
+// AddGroupMember adds a user to a group conversation.
+func (r *Repository) AddGroupMember(ctx context.Context, conversationID string, userID string, joinedAt time.Time) error {
+	q := r.session.Query(
+		`INSERT INTO conversation_members (conversation_id, user_id, joined_at) VALUES (?, ?, ?)`,
+		conversationID, userID, joinedAt,
+	).WithContext(ctx)
+	return q.Exec()
+}
+
 // GetConversation retrieves a conversation by ID.
+// Checks both direct conversations and group conversations.
 func (r *Repository) GetConversation(ctx context.Context, id string) (*domain.Conversation, error) {
+	// Try direct conversation first
 	var conv domain.Conversation
 	var matchID *string
 	q := r.session.Query(
@@ -74,24 +155,73 @@ func (r *Repository) GetConversation(ctx context.Context, id string) (*domain.Co
 	).WithContext(ctx)
 
 	err := q.Scan(&conv.ID, &conv.User1ID, &conv.User2ID, &matchID, &conv.CreatedAt)
+	if err == nil {
+		conv.Type = domain.ConversationTypeDirect
+		if matchID != nil {
+			conv.MatchID = *matchID
+		}
+		return &conv, nil
+	}
+
+	// Try group conversation
+	groupConv, err := r.GetGroupConversation(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("conversation not found: %s", id)
+	}
+	return groupConv, nil
+}
+
+// GetGroupConversation retrieves a group conversation by ID.
+func (r *Repository) GetGroupConversation(ctx context.Context, id string) (*domain.Conversation, error) {
+	var conv domain.Conversation
+	q := r.session.Query(
+		`SELECT id, name, created_at FROM group_conversations WHERE id = ?`,
+		id,
+	).WithContext(ctx)
+
+	err := q.Scan(&conv.ID, &conv.Name, &conv.CreatedAt)
 	if err != nil {
 		if err == gocql.ErrNotFound {
-			return nil, fmt.Errorf("conversation not found: %s", id)
+			return nil, fmt.Errorf("group conversation not found: %s", id)
 		}
-		return nil, fmt.Errorf("failed to get conversation: %w", err)
+		return nil, fmt.Errorf("failed to get group conversation: %w", err)
 	}
-	if matchID != nil {
-		conv.MatchID = *matchID
+	conv.Type = domain.ConversationTypeGroup
+
+	// Load members
+	members, err := r.GetGroupMembers(ctx, id)
+	if err != nil {
+		return nil, err
 	}
+	conv.MemberIDs = members
+
 	return &conv, nil
 }
 
+// GetGroupMembers returns all member user IDs for a group conversation.
+func (r *Repository) GetGroupMembers(ctx context.Context, conversationID string) ([]string, error) {
+	var members []string
+	iter := r.session.Query(
+		`SELECT user_id FROM conversation_members WHERE conversation_id = ?`,
+		conversationID,
+	).WithContext(ctx).Iter()
+
+	var userID string
+	for iter.Scan(&userID) {
+		members = append(members, userID)
+	}
+	if err := iter.Close(); err != nil {
+		return nil, fmt.Errorf("failed to get group members: %w", err)
+	}
+	return members, nil
+}
+
 // GetConversationsByUserID returns all conversations for a user.
-// ScyllaDB doesn't support OR queries, so we query both indexes and merge.
+// Includes both direct conversations and group conversations the user is a member of.
 func (r *Repository) GetConversationsByUserID(ctx context.Context, userID string) ([]*domain.Conversation, error) {
 	seen := make(map[string]*domain.Conversation)
 
-	// Query conversations where user is user1
+	// Query direct conversations where user is user1
 	iter1 := r.session.Query(
 		`SELECT id, user1_id, user2_id, match_id, created_at FROM conversations WHERE user1_id = ?`,
 		userID,
@@ -99,6 +229,7 @@ func (r *Repository) GetConversationsByUserID(ctx context.Context, userID string
 
 	conv, err := scanConversation(iter1)
 	for err == nil && conv != nil {
+		conv.Type = domain.ConversationTypeDirect
 		seen[conv.ID] = conv
 		conv, err = scanConversation(iter1)
 	}
@@ -116,6 +247,7 @@ func (r *Repository) GetConversationsByUserID(ctx context.Context, userID string
 
 	conv, err = scanConversation(iter2)
 	for err == nil && conv != nil {
+		conv.Type = domain.ConversationTypeDirect
 		seen[conv.ID] = conv
 		conv, err = scanConversation(iter2)
 	}
@@ -125,11 +257,61 @@ func (r *Repository) GetConversationsByUserID(ctx context.Context, userID string
 	}
 	iter2.Close()
 
+	// Query group conversations where user is a member
+	groupIDs, err := r.GetUserGroupIDs(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	for _, groupID := range groupIDs {
+		if _, exists := seen[groupID]; !exists {
+			groupConv, err := r.GetGroupConversation(ctx, groupID)
+			if err == nil {
+				seen[groupID] = groupConv
+			}
+		}
+	}
+
 	result := make([]*domain.Conversation, 0, len(seen))
 	for _, c := range seen {
 		result = append(result, c)
 	}
 	return result, nil
+}
+
+// GetUserGroupIDs returns all group conversation IDs a user is a member of.
+func (r *Repository) GetUserGroupIDs(ctx context.Context, userID string) ([]string, error) {
+	var ids []string
+	iter := r.session.Query(
+		`SELECT conversation_id FROM conversation_members WHERE user_id = ?`,
+		userID,
+	).WithContext(ctx).Iter()
+
+	var convID gocql.UUID
+	for iter.Scan(&convID) {
+		ids = append(ids, convID.String())
+	}
+	if err := iter.Close(); err != nil {
+		return nil, fmt.Errorf("failed to get user group IDs: %w", err)
+	}
+	return ids, nil
+}
+
+// IsGroupMember checks if a user is a member of a group conversation.
+func (r *Repository) IsGroupMember(ctx context.Context, conversationID string, userID string) (bool, error) {
+	q := r.session.Query(
+		`SELECT user_id FROM conversation_members WHERE conversation_id = ? AND user_id = ?`,
+		conversationID, userID,
+	).WithContext(ctx)
+
+	var found string
+	err := q.Scan(&found)
+	if err == gocql.ErrNotFound {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // scanConversation scans a single conversation row from the iterator.

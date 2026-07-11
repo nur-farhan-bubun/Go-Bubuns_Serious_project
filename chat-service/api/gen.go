@@ -37,6 +37,8 @@ func (e PresenceStatus) Valid() bool {
 type Conversation struct {
 	CreatedAt *time.Time `json:"created_at,omitempty"`
 	Id        *string    `json:"id,omitempty"`
+	Type      *string    `json:"type,omitempty"`
+	Name      *string    `json:"name,omitempty"`
 	MatchId   *string    `json:"match_id,omitempty"`
 	User1Id   *string    `json:"user1_id,omitempty"`
 	User2Id   *string    `json:"user2_id,omitempty"`
