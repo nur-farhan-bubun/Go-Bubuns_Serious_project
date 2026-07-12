@@ -9,6 +9,7 @@ type Config struct {
 	RedisURL        string
 	KafkaBrokers    string
 	UserServiceURL  string
+	UserServiceGRPC string
 }
 
 // Load reads configuration from environment variables.
@@ -19,6 +20,7 @@ func Load() *Config {
 		RedisURL:        getEnv("REDIS_URL", "redis:6379"),
 		KafkaBrokers:    getEnv("KAFKA_BROKERS", "kafka:9092"),
 		UserServiceURL:  getEnv("USER_SERVICE_URL", "http://user-service:8081"),
+		UserServiceGRPC: getEnv("USER_SERVICE_GRPC", "user-service:50051"),
 	}
 }
 

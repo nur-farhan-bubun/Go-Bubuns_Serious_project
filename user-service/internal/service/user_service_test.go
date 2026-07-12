@@ -156,13 +156,54 @@ func (m *mockPhotoRepo) SetPrimary(_ context.Context, photoID, userID string) er
 	return nil
 }
 
+type mockBlockRepo struct {
+	// blocks stores entries as "blocker:blocked" → true
+	blocks map[string]bool
+	err    error
+}
+
+func (m *mockBlockRepo) BlockUser(_ context.Context, blockerID, blockedID string) error {
+	if m.err != nil {
+		return m.err
+	}
+	if m.blocks == nil {
+		m.blocks = make(map[string]bool)
+	}
+	m.blocks[blockerID+":"+blockedID] = true
+	return nil
+}
+
+func (m *mockBlockRepo) UnblockUser(_ context.Context, blockerID, blockedID string) error {
+	if m.err != nil {
+		return m.err
+	}
+	key := blockerID + ":" + blockedID
+	if _, ok := m.blocks[key]; !ok {
+		return errors.New("block record not found")
+	}
+	delete(m.blocks, key)
+	return nil
+}
+
+func (m *mockBlockRepo) IsBlocked(_ context.Context, userID1, userID2 string) (bool, error) {
+	if m.err != nil {
+		return false, m.err
+	}
+	if m.blocks == nil {
+		return false, nil
+	}
+	// Bidirectional check
+	return m.blocks[userID1+":"+userID2] || m.blocks[userID2+":"+userID1], nil
+}
+
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
-func newTestService(dating DatingProfileRepository, worker WorkerProfileRepository, photo PhotoRepository) *Service {
+func newTestService(dating DatingProfileRepository, worker WorkerProfileRepository, photo PhotoRepository, block BlockRepository) *Service {
 	return &Service{
 		datingRepo: dating,
 		workerRepo: worker,
 		photoRepo:  photo,
+		blockRepo:  block,
 	}
 }
 
@@ -181,7 +222,7 @@ func TestGetDatingProfile_Success(t *testing.T) {
 			BirthDate:    fixedDate(),
 		},
 	}
-	svc := newTestService(mock, nil, nil)
+	svc := newTestService(mock, nil, nil, nil)
 
 	profile, err := svc.GetDatingProfile(context.Background(), "user-1")
 	if err != nil {
@@ -199,7 +240,7 @@ func TestGetDatingProfile_Success(t *testing.T) {
 }
 
 func TestGetDatingProfile_NotFound(t *testing.T) {
-	svc := newTestService(&mockDatingRepo{}, nil, nil)
+	svc := newTestService(&mockDatingRepo{}, nil, nil, nil)
 
 	_, err := svc.GetDatingProfile(context.Background(), "nonexistent")
 	if err == nil {
@@ -209,7 +250,7 @@ func TestGetDatingProfile_NotFound(t *testing.T) {
 
 func TestUpdateDatingProfile_Create(t *testing.T) {
 	mock := &mockDatingRepo{}
-	svc := newTestService(mock, nil, nil)
+	svc := newTestService(mock, nil, nil, nil)
 
 	profile := &domain.DatingProfile{
 		UserID:       "user-1",
@@ -246,13 +287,13 @@ func TestUpdateDatingProfile_UpdateExisting(t *testing.T) {
 			BirthDate:    fixedDate(),
 		},
 	}
-	svc := newTestService(mock, nil, nil)
+	svc := newTestService(mock, nil, nil, nil)
 
 	updated := &domain.DatingProfile{
-		UserID:       "user-1",
-		Gender:       "MALE",
-		InterestedIn: "BOTH",
-		BirthDate:    fixedDate(),
+		UserID:           "user-1",
+		Gender:           "MALE",
+		InterestedIn:     "BOTH",
+		BirthDate:        fixedDate(),
 		RelationshipGoal: "SERIOUS",
 	}
 
@@ -279,7 +320,7 @@ func TestDeleteDatingProfile_Success(t *testing.T) {
 			BirthDate:    fixedDate(),
 		},
 	}
-	svc := newTestService(mock, nil, nil)
+	svc := newTestService(mock, nil, nil, nil)
 
 	err := svc.DeleteDatingProfile(context.Background(), "user-1")
 	if err != nil {
@@ -294,7 +335,7 @@ func TestDeleteDatingProfile_Success(t *testing.T) {
 }
 
 func TestDeleteDatingProfile_NotFound(t *testing.T) {
-	svc := newTestService(&mockDatingRepo{}, nil, nil)
+	svc := newTestService(&mockDatingRepo{}, nil, nil, nil)
 
 	err := svc.DeleteDatingProfile(context.Background(), "nonexistent")
 	if err == nil {
@@ -314,7 +355,7 @@ func TestGetWorkerProfile_Success(t *testing.T) {
 			RatingAvg:          4.5,
 		},
 	}
-	svc := newTestService(nil, mock, nil)
+	svc := newTestService(nil, mock, nil, nil)
 
 	profile, err := svc.GetWorkerProfile(context.Background(), "user-1")
 	if err != nil {
@@ -335,7 +376,7 @@ func TestGetWorkerProfile_Success(t *testing.T) {
 }
 
 func TestGetWorkerProfile_NotFound(t *testing.T) {
-	svc := newTestService(nil, &mockWorkerRepo{}, nil)
+	svc := newTestService(nil, &mockWorkerRepo{}, nil, nil)
 
 	_, err := svc.GetWorkerProfile(context.Background(), "nonexistent")
 	if err == nil {
@@ -345,7 +386,7 @@ func TestGetWorkerProfile_NotFound(t *testing.T) {
 
 func TestUpdateWorkerProfile_Create(t *testing.T) {
 	mock := &mockWorkerRepo{}
-	svc := newTestService(nil, mock, nil)
+	svc := newTestService(nil, mock, nil, nil)
 
 	rate := 25.50
 	profile := &domain.WorkerProfile{
@@ -377,7 +418,7 @@ func TestUpdateWorkerProfile_UpdateExisting(t *testing.T) {
 			IsAvailable: false,
 		},
 	}
-	svc := newTestService(nil, mock, nil)
+	svc := newTestService(nil, mock, nil, nil)
 
 	updated := &domain.WorkerProfile{
 		UserID:      "user-1",
@@ -407,7 +448,7 @@ func TestDeleteWorkerProfile_Success(t *testing.T) {
 			IsAvailable: true,
 		},
 	}
-	svc := newTestService(nil, mock, nil)
+	svc := newTestService(nil, mock, nil, nil)
 
 	err := svc.DeleteWorkerProfile(context.Background(), "user-1")
 	if err != nil {
@@ -421,7 +462,7 @@ func TestDeleteWorkerProfile_Success(t *testing.T) {
 }
 
 func TestDeleteWorkerProfile_NotFound(t *testing.T) {
-	svc := newTestService(nil, &mockWorkerRepo{}, nil)
+	svc := newTestService(nil, &mockWorkerRepo{}, nil, nil)
 
 	err := svc.DeleteWorkerProfile(context.Background(), "nonexistent")
 	if err == nil {
@@ -432,7 +473,7 @@ func TestDeleteWorkerProfile_NotFound(t *testing.T) {
 // ─── Profile Photo Tests ────────────────────────────────────────────────────
 
 func TestListPhotos_Empty(t *testing.T) {
-	svc := newTestService(nil, nil, &mockPhotoRepo{})
+	svc := newTestService(nil, nil, &mockPhotoRepo{}, nil)
 
 	photos, err := svc.ListPhotos(context.Background(), "user-1")
 	if err != nil {
@@ -445,7 +486,7 @@ func TestListPhotos_Empty(t *testing.T) {
 
 func TestAddPhoto_Success(t *testing.T) {
 	mock := &mockPhotoRepo{}
-	svc := newTestService(nil, nil, mock)
+	svc := newTestService(nil, nil, mock, nil)
 
 	photo := &domain.ProfilePhoto{
 		UserID: "user-1",
@@ -468,7 +509,7 @@ func TestAddPhoto_Success(t *testing.T) {
 
 func TestAddPhoto_Multiple(t *testing.T) {
 	mock := &mockPhotoRepo{}
-	svc := newTestService(nil, nil, mock)
+	svc := newTestService(nil, nil, mock, nil)
 
 	svc.AddPhoto(context.Background(), &domain.ProfilePhoto{
 		UserID: "user-1",
@@ -496,7 +537,7 @@ func TestAddPhoto_Multiple(t *testing.T) {
 
 func TestDeletePhoto_Success(t *testing.T) {
 	mock := &mockPhotoRepo{}
-	svc := newTestService(nil, nil, mock)
+	svc := newTestService(nil, nil, mock, nil)
 
 	photo := &domain.ProfilePhoto{UserID: "user-1", S3URL: "https://s3.example.com/photo.jpg"}
 	svc.AddPhoto(context.Background(), photo)
@@ -513,7 +554,7 @@ func TestDeletePhoto_Success(t *testing.T) {
 }
 
 func TestDeletePhoto_NotFound(t *testing.T) {
-	svc := newTestService(nil, nil, &mockPhotoRepo{})
+	svc := newTestService(nil, nil, &mockPhotoRepo{}, nil)
 
 	err := svc.DeletePhoto(context.Background(), "nonexistent")
 	if err == nil {
@@ -523,7 +564,7 @@ func TestDeletePhoto_NotFound(t *testing.T) {
 
 func TestSetPrimaryPhoto_Success(t *testing.T) {
 	mock := &mockPhotoRepo{}
-	svc := newTestService(nil, nil, mock)
+	svc := newTestService(nil, nil, mock, nil)
 
 	svc.AddPhoto(context.Background(), &domain.ProfilePhoto{UserID: "user-1", S3URL: "https://s3.example.com/p1.jpg"})
 	svc.AddPhoto(context.Background(), &domain.ProfilePhoto{UserID: "user-1", S3URL: "https://s3.example.com/p2.jpg"})
@@ -557,11 +598,138 @@ func TestSetPrimaryPhoto_Success(t *testing.T) {
 }
 
 func TestSetPrimaryPhoto_NotFound(t *testing.T) {
-	svc := newTestService(nil, nil, &mockPhotoRepo{})
+	svc := newTestService(nil, nil, &mockPhotoRepo{}, nil)
 
 	_, err := svc.SetPrimaryPhoto(context.Background(), "nonexistent", "user-1")
 	if err == nil {
 		t.Fatal("expected error, got nil")
+	}
+}
+
+func TestCheckBlockStatus_Blocked(t *testing.T) {
+	mock := &mockBlockRepo{}
+	svc := newTestService(nil, nil, nil, mock)
+
+	// User A blocks user B
+	_ = svc.BlockUser(context.Background(), "user-a", "user-b")
+
+	// Check: is A blocked from talking to B?
+	blocked, err := svc.CheckBlockStatus(context.Background(), "user-a", "user-b")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !blocked {
+		t.Error("expected blocked=true, got false")
+	}
+}
+
+func TestCheckBlockStatus_NotBlocked(t *testing.T) {
+	mock := &mockBlockRepo{}
+	svc := newTestService(nil, nil, nil, mock)
+
+	// No blocks exist
+	blocked, err := svc.CheckBlockStatus(context.Background(), "user-a", "user-b")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if blocked {
+		t.Error("expected blocked=false, got true")
+	}
+}
+
+func TestCheckBlockStatus_ReverseBlock(t *testing.T) {
+	mock := &mockBlockRepo{}
+	svc := newTestService(nil, nil, nil, mock)
+
+	// User B blocks user A (reverse direction)
+	_ = svc.BlockUser(context.Background(), "user-b", "user-a")
+
+	// Check from A→B should still return true (bidirectional)
+	blocked, err := svc.CheckBlockStatus(context.Background(), "user-a", "user-b")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !blocked {
+		t.Error("expected blocked=true (reverse), got false")
+	}
+}
+
+func TestCheckBlockStatus_NilRepo(t *testing.T) {
+	svc := newTestService(nil, nil, nil, nil) // blockRepo is nil
+
+	// Should gracefully return false, not panic or error
+	blocked, err := svc.CheckBlockStatus(context.Background(), "user-a", "user-b")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if blocked {
+		t.Error("expected blocked=false with nil repo, got true")
+	}
+}
+
+func TestBlockUser_Success(t *testing.T) {
+	mock := &mockBlockRepo{}
+	svc := newTestService(nil, nil, nil, mock)
+
+	err := svc.BlockUser(context.Background(), "user-a", "user-b")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Verify it's stored
+	blocked, _ := svc.CheckBlockStatus(context.Background(), "user-a", "user-b")
+	if !blocked {
+		t.Error("expected blocked=true after BlockUser")
+	}
+}
+
+func TestBlockUser_SelfBlock(t *testing.T) {
+	mock := &mockBlockRepo{}
+	svc := newTestService(nil, nil, nil, mock)
+
+	err := svc.BlockUser(context.Background(), "user-a", "user-a")
+	if err == nil {
+		t.Fatal("expected error for self-block, got nil")
+	}
+}
+
+func TestBlockUser_Idempotent(t *testing.T) {
+	mock := &mockBlockRepo{}
+	svc := newTestService(nil, nil, nil, mock)
+
+	_ = svc.BlockUser(context.Background(), "user-a", "user-b")
+	// Second block should not error
+	err := svc.BlockUser(context.Background(), "user-a", "user-b")
+	if err != nil {
+		t.Fatalf("expected idempotent block to succeed, got: %v", err)
+	}
+}
+
+func TestUnblockUser_Success(t *testing.T) {
+	mock := &mockBlockRepo{}
+	svc := newTestService(nil, nil, nil, mock)
+
+	_ = svc.BlockUser(context.Background(), "user-a", "user-b")
+
+	err := svc.UnblockUser(context.Background(), "user-a", "user-b")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Verify it's removed
+	blocked, _ := svc.CheckBlockStatus(context.Background(), "user-a", "user-b")
+	if blocked {
+		t.Error("expected blocked=false after UnblockUser")
+	}
+}
+
+func TestUnblockUser_NotFound(t *testing.T) {
+	mock := &mockBlockRepo{}
+	svc := newTestService(nil, nil, nil, mock)
+
+	err := svc.UnblockUser(context.Background(), "user-a", "user-b")
+	if err == nil {
+		t.Fatal("expected error when unblocking non-existent record, got nil")
 	}
 }
 

@@ -8,13 +8,14 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/ride-sharing/chat-service/api"
 	"github.com/labstack/echo/v4"
 
+	"github.com/ride-sharing/chat-service/api"
 	"github.com/ride-sharing/chat-service/internal/config"
 	"github.com/ride-sharing/chat-service/internal/domain"
 	kafkainfra "github.com/ride-sharing/chat-service/internal/kafka"
 	"github.com/ride-sharing/chat-service/internal/store"
+	userClient "github.com/ride-sharing/chat-service/internal/userclient"
 	scyllarepo "github.com/ride-sharing/chat-service/internal/repository/scylladb"
 	"github.com/ride-sharing/chat-service/internal/service"
 	ws "github.com/ride-sharing/chat-service/internal/websocket"
@@ -34,10 +35,11 @@ type OpenAPIHandler struct {
 	log             *slog.Logger
 	userStore       *store.MemoryUserStore
 	httpClient      *http.Client
+	userGRPCClient  *userClient.Client
 }
 
 // NewOpenAPIHandler creates a new handler.
-func NewOpenAPIHandler(cfg *config.Config, svc *service.Service, hub *ws.Hub, producer *kafkainfra.Producer, log *slog.Logger, userStore *store.MemoryUserStore) *OpenAPIHandler {
+func NewOpenAPIHandler(cfg *config.Config, svc *service.Service, hub *ws.Hub, producer *kafkainfra.Producer, log *slog.Logger, userStore *store.MemoryUserStore, userGRPCClient *userClient.Client) *OpenAPIHandler {
 	return &OpenAPIHandler{
 		cfg:        cfg,
 		svc:        svc,
@@ -46,6 +48,7 @@ func NewOpenAPIHandler(cfg *config.Config, svc *service.Service, hub *ws.Hub, pr
 		log:        log,
 		userStore:  userStore,
 		httpClient: &http.Client{Timeout: 5 * time.Second},
+		userGRPCClient: userGRPCClient,
 	}
 }
 
@@ -63,6 +66,22 @@ func (h *OpenAPIHandler) extractUserID(c echo.Context) string {
 		userID = c.QueryParam("user_id")
 	}
 	return userID
+}
+
+func (h *OpenAPIHandler) isBlocked(ctx context.Context, senderID, otherUserID string) bool {
+	if h.userGRPCClient == nil || otherUserID == "" {
+		return false
+	}
+	isBlocked, err := h.userGRPCClient.CheckBlockStatus(ctx, senderID, otherUserID)
+	if err != nil {
+		h.log.Warn("block status check failed, allowing message",
+			slog.String("error", err.Error()),
+			slog.String("sender_id", senderID),
+			slog.String("other_user_id", otherUserID),
+		)
+		return false
+	}
+	return isBlocked
 }
 
 // GetConversations handles GET /v1/conversations.
@@ -110,7 +129,17 @@ func (h *OpenAPIHandler) CreateConversation(ctx echo.Context) error {
 		return ctx.JSON(http.StatusBadRequest, errResp("cannot create conversation with yourself"))
 	}
 
+	// Check if either user has blocked the other before creating a conversation
+	if h.isBlocked(ctx.Request().Context(), userID, req.UserId) {
+		h.log.Info("conversation creation blocked — user is blocked",
+			slog.String("initiator_id", userID),
+			slog.String("target_id", req.UserId),
+		)
+		return ctx.JSON(http.StatusForbidden, errResp("cannot create conversation: user is blocked"))
+	}
+
 	// Check if conversation already exists between these two users
+	// (checked after block check to avoid exposing existing convos when blocked)
 	existing, err := h.svc.FindExistingConversation(ctx.Request().Context(), userID, req.UserId)
 	if err != nil {
 		h.log.Error("failed to check existing conversation", slog.String("error", err.Error()))
@@ -242,6 +271,24 @@ func (h *OpenAPIHandler) SendMessage(ctx echo.Context, id string) error {
 	}
 	if !h.svc.IsConversationParticipant(ctx.Request().Context(), conv, userID) {
 		return ctx.JSON(http.StatusForbidden, errResp("not a participant in this conversation"))
+	}
+
+	if conv.Type == domain.ConversationTypeDirect {
+		var otherUserID string
+		if conv.User1ID == userID {
+			otherUserID = conv.User2ID
+		} else {
+			otherUserID = conv.User1ID
+		}
+
+		if h.isBlocked(ctx.Request().Context(), userID, otherUserID) {
+			h.log.Info("REST message blocked — user is blocked",
+				slog.String("sender_id", userID),
+				slog.String("recipient_id", otherUserID),
+				slog.String("conversation_id", id),
+			)
+			return ctx.JSON(http.StatusForbidden, errResp("message blocked: you cannot message this user"))
+		}
 	}
 
 	now := time.Now().UTC()

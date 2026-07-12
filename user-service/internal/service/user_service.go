@@ -58,6 +58,12 @@ type PhotoRepository interface {
 	SetPrimary(ctx context.Context, photoID, userID string) error
 }
 
+type BlockRepository interface {
+	BlockUser(ctx context.Context, blockerID, blockedID string) error
+	UnblockUser(ctx context.Context, blockerID, blockedID string) error
+	IsBlocked(ctx context.Context, userID1, userID2 string) (bool, error)
+}
+
 // EventPublisher defines the contract for publishing user lifecycle events.
 type EventPublisher interface {
 	Publish(ctx context.Context, event *userevent.UserEvent) error
@@ -71,19 +77,21 @@ type Service struct {
 	datingRepo       DatingProfileRepository
 	workerRepo       WorkerProfileRepository
 	photoRepo        PhotoRepository
+	blockRepo        BlockRepository
 	oauth2           *oauth2.Config
 	jwtSecret        []byte
 	eventPublisher   EventPublisher
 }
 
 // New creates a new user service.
-func New(repo UserRepository, profileRepo ProfileRepository, datingRepo DatingProfileRepository, workerRepo WorkerProfileRepository, photoRepo PhotoRepository, googleClientID, googleClientSecret, googleRedirectURL, jwtSecret string, eventPublisher EventPublisher) *Service {
+func New(repo UserRepository, profileRepo ProfileRepository, datingRepo DatingProfileRepository, workerRepo WorkerProfileRepository, photoRepo PhotoRepository, blockRepo BlockRepository, googleClientID, googleClientSecret, googleRedirectURL, jwtSecret string, eventPublisher EventPublisher) *Service {
 	return &Service{
 		repo:        repo,
 		profileRepo: profileRepo,
 		datingRepo:  datingRepo,
 		workerRepo:  workerRepo,
 		photoRepo:   photoRepo,
+		blockRepo:   blockRepo,
 		oauth2: &oauth2.Config{
 			ClientID:     googleClientID,
 			ClientSecret: googleClientSecret,
@@ -450,6 +458,30 @@ func (s *Service) Backfill(ctx context.Context) error {
 		page++
 	}
 	return nil
+}
+
+func (s *Service) CheckBlockStatus(ctx context.Context, senderID, recipientID string) (bool, error) {
+	if s.blockRepo == nil {
+		return false, nil
+	}
+	return s.blockRepo.IsBlocked(ctx, senderID, recipientID)
+}
+
+func (s *Service) BlockUser(ctx context.Context, blockerID, blockedID string) error {
+	if s.blockRepo == nil {
+		return fmt.Errorf("block repository not configured")
+	}
+	if blockerID == blockedID {
+		return fmt.Errorf("cannot block yourself")
+	}
+	return s.blockRepo.BlockUser(ctx, blockerID, blockedID)
+}
+
+func (s *Service) UnblockUser(ctx context.Context, blockerID, blockedID string) error {
+	if s.blockRepo == nil {
+		return fmt.Errorf("block repository not configured")
+	}
+	return s.blockRepo.UnblockUser(ctx, blockerID, blockedID)
 }
 
 func generateID() string {

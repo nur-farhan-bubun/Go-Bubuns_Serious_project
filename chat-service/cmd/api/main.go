@@ -17,6 +17,7 @@ import (
 	scyllarepo "github.com/ride-sharing/chat-service/internal/repository/scylladb"
 	redisrepo "github.com/ride-sharing/chat-service/internal/repository/redis"
 	"github.com/ride-sharing/chat-service/internal/service"
+	userGRPCClient "github.com/ride-sharing/chat-service/internal/userclient"
 	"github.com/ride-sharing/chat-service/internal/store"
 	ws "github.com/ride-sharing/chat-service/internal/websocket"
 )
@@ -67,10 +68,25 @@ func main() {
 	// Initialise the Kafka consumer for user lifecycle events (user.created, etc.).
 	userConsumer := kafkainfra.NewUserConsumer(cfg.KafkaBrokers, userStore, logger)
 
+	var grpcUserClient *userGRPCClient.Client
+	if cfg.UserServiceGRPC != "" {
+		var err error
+		grpcUserClient, err = userGRPCClient.NewClient(cfg.UserServiceGRPC)
+		if err != nil {
+			logger.Warn("failed to connect to user-service gRPC, block checks disabled",
+				slog.String("error", err.Error()),
+			)
+			grpcUserClient = nil
+		} else {
+			defer grpcUserClient.Close()
+			logger.Info("connected to user-service gRPC", slog.String("addr", cfg.UserServiceGRPC))
+		}
+	}
+
 	e := echo.New()
 
 	// Register routes via generated oapi-codegen handler
-	openapiHandler := handler.NewOpenAPIHandler(cfg, svc, hub, producer, logger, userStore)
+	openapiHandler := handler.NewOpenAPIHandler(cfg, svc, hub, producer, logger, userStore, grpcUserClient)
 
 	// Wire up presence broadcasting: when a user connects/disconnects, the hub
 	// calls this callback which broadcasts to all local clients + publishes to Kafka.

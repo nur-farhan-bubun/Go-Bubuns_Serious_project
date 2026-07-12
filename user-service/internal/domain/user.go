@@ -135,6 +135,12 @@ func (u *User) ToResponse() *UserResponse {
 	}
 }
 
+type BlockedUser struct {
+	BlockerID string    `json:"blocker_id"`
+	BlockedID string    `json:"blocked_id"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
 // ─── Auth types ─────────────────────────────────────────────────────────────
 
 // GoogleUserInfo represents the user info returned by Google's OAuth API.

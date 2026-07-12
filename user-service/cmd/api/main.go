@@ -9,13 +9,18 @@ import (
 	"syscall"
 	"time"
 
+	"net"
+
 	"github.com/labstack/echo/v4"
+	"github.com/ride-sharing/shared/proto/user"
 	"github.com/ride-sharing/user-service/api"
 	"github.com/ride-sharing/user-service/internal/config"
 	"github.com/ride-sharing/user-service/internal/handler"
 	kafkainfra "github.com/ride-sharing/user-service/internal/kafka"
 	"github.com/ride-sharing/user-service/internal/repository/postgres"
 	"github.com/ride-sharing/user-service/internal/service"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/reflection"
 )
 
 const shutdownTimeout = 10 * time.Second
@@ -41,12 +46,14 @@ func main() {
 	workerRepo := postgres.NewWorkerProfileRepository(pool)
 	photoRepo := postgres.NewProfilePhotoRepository(pool)
 
+	blockRepo := postgres.NewBlockRepository(pool)
+
 	// Initialise Kafka producer for user lifecycle events.
 	// If Kafka is unavailable, the service still works — events are dropped.
 	eventProducer := kafkainfra.NewProducer(cfg.KafkaBrokers, logger)
 
 	// Services
-	svc := service.New(repo, profileRepo, datingRepo, workerRepo, photoRepo,
+	svc := service.New(repo, profileRepo, datingRepo, workerRepo, photoRepo, blockRepo,
 		cfg.GoogleClientID, cfg.GoogleClientSecret, cfg.GoogleRedirectURL, cfg.JWTSecret,
 		eventProducer,
 	)
@@ -57,6 +64,18 @@ func main() {
 	// Register routes via generated oapi-codegen handler
 	openapiHandler := handler.NewOpenAPIHandler(svc, svc)
 	api.RegisterHandlers(e, openapiHandler)
+
+	grpcAddr := ":" + cfg.GRPCPort
+	grpcLis, err := net.Listen("tcp", grpcAddr)
+	if err != nil {
+		logger.Error("failed to listen for gRPC", slog.String("error", err.Error()))
+		os.Exit(1)
+	}
+
+	grpcServer := grpc.NewServer()
+	grpcHandler := handler.NewGrpcHandler(svc)
+	user.RegisterUserServiceServer(grpcServer, grpcHandler)
+	reflection.Register(grpcServer)
 
 	addr := ":" + cfg.Port
 
@@ -72,9 +91,18 @@ func main() {
 
 	// Start HTTP server in background.
 	go func() {
-		logger.Info("starting User Service", slog.String("addr", addr))
+		logger.Info("starting User Service HTTP", slog.String("addr", addr))
 		if err := e.Start(addr); err != nil && err != http.ErrServerClosed {
 			logger.Error("server start failed", slog.String("error", err.Error()))
+			os.Exit(1)
+		}
+	}()
+
+	// Start gRPC server in background.
+	go func() {
+		logger.Info("starting User Service gRPC", slog.String("addr", grpcAddr))
+		if err := grpcServer.Serve(grpcLis); err != nil {
+			logger.Error("gRPC server failed", slog.String("error", err.Error()))
 			os.Exit(1)
 		}
 	}()
@@ -86,7 +114,10 @@ func main() {
 
 	logger.Info("shutting down server", slog.String("signal", sig.String()))
 
-	// Gracefully shut down the HTTP server with a timeout.
+	// 1. Gracefully stop gRPC server.
+	grpcServer.GracefulStop()
+
+	// 2. Gracefully shut down the HTTP server with a timeout.
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer shutdownCancel()
 
@@ -94,7 +125,7 @@ func main() {
 		logger.Error("server forced to shutdown", slog.String("error", err.Error()))
 	}
 
-	// Flush and close Kafka producer on shutdown.
+	// 3. Flush and close Kafka producer on shutdown.
 	if err := eventProducer.Close(); err != nil {
 		logger.Error("kafka producer close error", "error", err)
 	}

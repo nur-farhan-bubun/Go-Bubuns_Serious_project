@@ -1,0 +1,30 @@
+syntax = "proto3";
+
+package user;
+
+
+option go_package = "ride-sharing/shared/proto/user;user";
+
+service UserService {
+  rpc GetInternalProfile (InternalProfileRequest) returns (InternalProfileResponse);
+   rpc CheckBlockStatus (BlocKStatusCheckRequest) returns (BlocKStatusCheckResponse);
+}
+
+message BlocKStatusCheckRequest{
+    string sender_id = 1;
+  string rec_id = 2;
+}
+message BlocKStatusCheckResponse{
+ bool  is_blocked = 1;
+}
+
+message InternalProfileRequest {
+  string user_id = 1;
+}
+
+message InternalProfileResponse {
+  string id = 1;
+  string display_name = 2;
+  string avatar_url = 3;
+  bool is_active = 4;
+}

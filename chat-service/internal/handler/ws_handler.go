@@ -236,6 +236,49 @@ func (h *OpenAPIHandler) handleIncomingChat(client *ws.Client, roomID string, da
 		return
 	}
 
+	if h.userGRPCClient != nil {
+		conv, err := h.svc.GetConversation(context.Background(), roomID)
+		if err != nil {
+			h.log.Warn("failed to look up conversation for block check",
+				slog.String("error", err.Error()),
+				slog.String("room_id", roomID),
+			)
+		} else {
+			// Determine the other participant in a direct conversation
+			var otherUserID string
+			if conv.Type == domain.ConversationTypeDirect {
+				if conv.User1ID == client.UserID {
+					otherUserID = conv.User2ID
+				} else {
+					otherUserID = conv.User1ID
+				}
+			}
+
+			if otherUserID != "" {
+				isBlocked, err := h.userGRPCClient.CheckBlockStatus(
+					context.Background(), client.UserID, otherUserID,
+				)
+				if err != nil {
+					h.log.Warn("block status check failed, allowing message",
+						slog.String("error", err.Error()),
+					)
+				} else if isBlocked {
+					h.log.Info("message blocked — user is blocked",
+						slog.String("sender_id", client.UserID),
+						slog.String("recipient_id", otherUserID),
+					)
+					env := pooledErrorEnvelope("message blocked: you cannot message this user")
+					_ = client.SendJSON(env)
+					env.Type = ""
+					env.RoomID = ""
+					env.Data = nil
+					envelopePool.Put(env)
+					return
+				}
+			}
+		}
+	}
+
 	// Persist message to ScyllaDB
 	now := time.Now()
 	msg := &domain.Message{

@@ -5,6 +5,7 @@ import "os"
 // Config holds configuration for the User Service.
 type Config struct {
 	Port              string
+	GRPCPort          string
 	DatabaseURL       string
 	S3Bucket          string
 	S3Region          string
@@ -19,6 +20,7 @@ type Config struct {
 func Load() *Config {
 	return &Config{
 		Port:               getEnv("PORT", "8081"),
+		GRPCPort:           getEnv("GRPC_PORT", "50051"),
 		DatabaseURL:        getEnv("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/users?sslmode=disable"),
 		S3Bucket:           getEnv("S3_BUCKET", ""),
 		S3Region:           getEnv("S3_REGION", ""),
