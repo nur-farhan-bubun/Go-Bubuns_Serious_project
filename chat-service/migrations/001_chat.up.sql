@@ -6,18 +6,21 @@ CREATE KEYSPACE IF NOT EXISTS app_chat
 
 USE app_chat;
 
+-- User IDs are stored as TEXT (not UUID) because auth providers
+-- (Clerk, dev-auth) issue non-UUID user identifiers.
+
 CREATE TABLE IF NOT EXISTS conversations (
     id         UUID PRIMARY KEY,
-    user1_id   UUID,
-    user2_id   UUID,
-    match_id   UUID,
+    user1_id   TEXT,
+    user2_id   TEXT,
+    match_id   TEXT,
     created_at TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS messages (
     conversation_id UUID,
     id              TIMEUUID,
-    sender_id       UUID,
+    sender_id       TEXT,
     content         TEXT,
     created_at      TIMESTAMP,
     PRIMARY KEY (conversation_id, id)

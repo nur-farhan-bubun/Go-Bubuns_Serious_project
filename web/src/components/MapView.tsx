@@ -36,8 +36,7 @@ import {
 import ThreadDrawer from "./ThreadDrawer"
 import CreatePostDrawer from "./CreatePostDrawer"
 
-const WorkspaceBar = dynamic(() => import("./chat/WorkspaceBar"), { ssr: false })
-const ChatOverlay = dynamic(() => import("./chat/ChatOverlay"), { ssr: false })
+
 
 // ─── Constants ──────────────────────────────────────────────────────────
 
@@ -340,7 +339,7 @@ export default function MapView() {
   // ─── Loading state ──────────────────────────────────────────────────
   if (checking) {
     return (
-      <div className="h-screen w-screen flex items-center justify-center bg-slate-900 text-white">
+      <div className="h-full w-full flex items-center justify-center bg-slate-900 text-white">
         <div className="text-center space-y-4">
           <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-blue-400 mx-auto" />
           <p className="text-slate-400 text-sm">Connecting to Location Service...</p>
@@ -351,10 +350,7 @@ export default function MapView() {
 
   // ─── Render ─────────────────────────────────────────────────────────
   return (
-    <div className="h-screen w-screen flex overflow-hidden">
-      {/* ─── Chat: Workspace Bar (always visible, w-20) ──────────── */}
-      <WorkspaceBar />
-
+    <div className="h-full w-full flex overflow-hidden">
       {/* ─── Main Content Area (map + log panel) ─────────────────── */}
       <div className="flex-1 flex min-w-0">
         {/* ─── Main Map with 3D Transform ──────────────────────────────── */}
@@ -758,9 +754,6 @@ export default function MapView() {
           </div>
         </div>
       </div>
-
-      {/* ─── Chat: Overlay (slides in from left, fixed position) ──── */}
-      <ChatOverlay />
 
       {/* ─── ThreadDrawer (bottom-sheet overlay, fixed position) ──── */}
       <ThreadDrawer />

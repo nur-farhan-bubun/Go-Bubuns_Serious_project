@@ -1,12 +1,14 @@
 package websocket
 
 import (
+	"encoding/json"
 	"hash/fnv"
 	"log/slog"
 	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/ride-sharing/chat-service/internal/domain"
 )
 
 const numShards = 32
@@ -33,6 +35,10 @@ type Hub struct {
 	shards [numShards]*RoomShard
 
 	logger *slog.Logger
+
+	// OnPresenceChange is called whenever a user connects or disconnects.
+	// It can be used by the handler layer to broadcast presence to Kafka/rooms.
+	OnPresenceChange func(userID string, status string)
 }
 
 // NewHub creates a new Hub.
@@ -60,6 +66,11 @@ func (h *Hub) Register(client *Client) {
 	h.clients[client.UserID] = client
 	h.clientMu.Unlock()
 	h.logger.Info("client registered", slog.String("user_id", client.UserID))
+
+	// Broadcast presence online event
+	if h.OnPresenceChange != nil {
+		h.OnPresenceChange(client.UserID, "online")
+	}
 }
 
 // Unregister removes a client from the hub and the room it was in.
@@ -88,6 +99,11 @@ func (h *Hub) Unregister(client *Client) {
 	}
 
 	h.logger.Info("client unregistered", slog.String("user_id", client.UserID))
+
+	// Broadcast presence offline event
+	if h.OnPresenceChange != nil {
+		h.OnPresenceChange(client.UserID, "offline")
+	}
 }
 
 // JoinRoom subscribes a client to a room.
@@ -143,6 +159,38 @@ func (h *Hub) SendToRoom(roomID string, data []byte) {
 	for client := range clients {
 		client.SendBytes(data)
 	}
+}
+
+// Broadcast sends pre-marshalled data to ALL connected clients regardless of room.
+// Used for global events like presence changes.
+func (h *Hub) Broadcast(data []byte) {
+	h.clientMu.RLock()
+	clients := make([]*Client, 0, len(h.clients))
+	for _, c := range h.clients {
+		clients = append(clients, c)
+	}
+	h.clientMu.RUnlock()
+
+	for _, client := range clients {
+		client.SendBytes(data)
+	}
+}
+
+// BroadcastPresence marshals and sends a presence event to all connected clients.
+func (h *Hub) BroadcastPresence(userID string, status string) {
+	envelope := &domain.WSEnvelope{
+		Type: domain.WSMsgTypePresence,
+		Data: domain.WSPresenceUpdate{
+			UserID: userID,
+			Status: status,
+		},
+	}
+	data, err := json.Marshal(envelope)
+	if err != nil {
+		h.logger.Error("failed to marshal presence envelope", slog.String("error", err.Error()))
+		return
+	}
+	h.Broadcast(data)
 }
 
 // GetClient returns a client by userID.

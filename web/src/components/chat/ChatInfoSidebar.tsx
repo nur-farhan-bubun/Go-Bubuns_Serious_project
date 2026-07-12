@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import { useChatStore } from "./ChatStore"
+import UserProfileView from "./UserProfileView"
 import Image from "next/image"
 
 // ─── SVG Icons ──────────────────────────────────────────────────────────
@@ -87,12 +88,21 @@ function AccordionSection({
 // ─── Component ──────────────────────────────────────────────────────────
 
 export default function ChatInfoSidebar() {
-  const { activeConversationId, conversations, assets, users } = useChatStore()
+  const { activeConversationId, conversations, assets, users, selectedProfileUserId, setSelectedProfileUser } = useChatStore()
 
   const conv = conversations.find((c) => c.id === activeConversationId)
 
   const photos = assets.filter((a) => a.type === "photo")
   const files = assets.filter((a) => a.type === "file" || a.type === "link")
+
+  // If a profile is selected, show the profile view instead of the sidebar
+  if (selectedProfileUserId) {
+    return (
+      <div className="w-80 bg-chat-panel border-l border-chat-border shrink-0 h-full flex flex-col">
+        <UserProfileView />
+      </div>
+    )
+  }
 
   return (
     <div className="w-80 bg-chat-panel border-l border-chat-border shrink-0 h-full flex flex-col">
@@ -137,7 +147,8 @@ export default function ChatInfoSidebar() {
               return (
                 <div
                   key={user.id}
-                  className="flex items-center gap-2.5 px-2 py-1.5 rounded-lg hover:bg-chat-card/60 transition-colors cursor-pointer"
+                  onClick={() => setSelectedProfileUser(user.id)}
+                  className="flex items-center gap-2.5 px-2 py-1.5 rounded-lg hover:bg-chat-card/60 transition-colors cursor-pointer group"
                 >
                   <div className="relative shrink-0">
                     <div
@@ -149,9 +160,28 @@ export default function ChatInfoSidebar() {
                     <span className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-chat-panel ${statusColors[user.status]}`} />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs font-medium text-slate-200 truncate">{user.name}</p>
+                    <p className="text-xs font-medium text-slate-200 truncate group-hover:text-white transition-colors">
+                      {user.name}
+                    </p>
+                    {user.email && (
+                      <p className="text-[9px] text-chat-muted/60 truncate leading-tight">{user.email}</p>
+                    )}
                     <p className="text-[10px] text-chat-muted capitalize">{user.role}</p>
                   </div>
+                  {/* View profile indicator */}
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className="text-chat-muted opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+                  >
+                    <path d="M9 18l6-6-6-6" />
+                  </svg>
                 </div>
               )
             })}

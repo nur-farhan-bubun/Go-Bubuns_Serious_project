@@ -8,6 +8,18 @@ export interface WSLocationMessage {
   longitude: number
 }
 
+/** Chat handshake / presence event types */
+export interface WSPresenceUpdate {
+  type: "presence"
+  user_id: string
+  status: string
+}
+
+export interface WSRoomReady {
+  type: "room_ready"
+  conversation_id: string
+}
+
 export type WSStatus = "connecting" | "connected" | "disconnected" | "error"
 
 export interface WSState {

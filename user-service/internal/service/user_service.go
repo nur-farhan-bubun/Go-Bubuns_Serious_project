@@ -7,11 +7,13 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/ride-sharing/user-service/internal/domain"
+	userevent "github.com/ride-sharing/user-service/internal/kafka"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 )
@@ -26,17 +28,71 @@ type UserRepository interface {
 	List(ctx context.Context, page, pageSize int) ([]*domain.User, int, error)
 }
 
+// ProfileRepository defines the persistence contract for universal profile data.
+type ProfileRepository interface {
+	GetByUserID(ctx context.Context, userID string) (*domain.Profile, error)
+	Upsert(ctx context.Context, profile *domain.Profile) error
+	Delete(ctx context.Context, userID string) error
+	SearchUsers(ctx context.Context, searchTerm string, excludeUserID string, limit int) ([]*domain.Profile, error)
+}
+
+// DatingProfileRepository defines the persistence contract for dating profile data.
+type DatingProfileRepository interface {
+	GetByUserID(ctx context.Context, userID string) (*domain.DatingProfile, error)
+	Upsert(ctx context.Context, profile *domain.DatingProfile) error
+	Delete(ctx context.Context, userID string) error
+}
+
+// WorkerProfileRepository defines the persistence contract for worker profile data.
+type WorkerProfileRepository interface {
+	GetByUserID(ctx context.Context, userID string) (*domain.WorkerProfile, error)
+	Upsert(ctx context.Context, profile *domain.WorkerProfile) error
+	Delete(ctx context.Context, userID string) error
+}
+
+// PhotoRepository defines the persistence contract for profile photos.
+type PhotoRepository interface {
+	ListByUserID(ctx context.Context, userID string) ([]*domain.ProfilePhoto, error)
+	GetByID(ctx context.Context, photoID string) (*domain.ProfilePhoto, error)
+	Create(ctx context.Context, photo *domain.ProfilePhoto) error
+	Delete(ctx context.Context, photoID string) error
+	SetPrimary(ctx context.Context, photoID, userID string) error
+}
+
+type BlockRepository interface {
+	BlockUser(ctx context.Context, blockerID, blockedID string) error
+	UnblockUser(ctx context.Context, blockerID, blockedID string) error
+	IsBlocked(ctx context.Context, userID1, userID2 string) (bool, error)
+}
+
+// EventPublisher defines the contract for publishing user lifecycle events.
+type EventPublisher interface {
+	Publish(ctx context.Context, event *userevent.UserEvent) error
+	Close() error
+}
+
 // Service handles user business logic.
 type Service struct {
-	repo      UserRepository
-	oauth2    *oauth2.Config
-	jwtSecret []byte
+	repo             UserRepository
+	profileRepo      ProfileRepository
+	datingRepo       DatingProfileRepository
+	workerRepo       WorkerProfileRepository
+	photoRepo        PhotoRepository
+	blockRepo        BlockRepository
+	oauth2           *oauth2.Config
+	jwtSecret        []byte
+	eventPublisher   EventPublisher
 }
 
 // New creates a new user service.
-func New(repo UserRepository, googleClientID, googleClientSecret, googleRedirectURL, jwtSecret string) *Service {
+func New(repo UserRepository, profileRepo ProfileRepository, datingRepo DatingProfileRepository, workerRepo WorkerProfileRepository, photoRepo PhotoRepository, blockRepo BlockRepository, googleClientID, googleClientSecret, googleRedirectURL, jwtSecret string, eventPublisher EventPublisher) *Service {
 	return &Service{
-		repo: repo,
+		repo:        repo,
+		profileRepo: profileRepo,
+		datingRepo:  datingRepo,
+		workerRepo:  workerRepo,
+		photoRepo:   photoRepo,
+		blockRepo:   blockRepo,
 		oauth2: &oauth2.Config{
 			ClientID:     googleClientID,
 			ClientSecret: googleClientSecret,
@@ -44,7 +100,8 @@ func New(repo UserRepository, googleClientID, googleClientSecret, googleRedirect
 			Scopes:       []string{"https://www.googleapis.com/auth/userinfo.email", "https://www.googleapis.com/auth/userinfo.profile"},
 			Endpoint:     google.Endpoint,
 		},
-		jwtSecret: []byte(jwtSecret),
+		jwtSecret:      []byte(jwtSecret),
+		eventPublisher: eventPublisher,
 	}
 }
 
@@ -55,9 +112,28 @@ func (s *Service) GetByID(ctx context.Context, id string) (*domain.User, error) 
 	return s.repo.GetByID(ctx, id)
 }
 
-// Create creates a new user.
-func (s *Service) Create(ctx context.Context, user *domain.User) (*domain.UserResponse, error) {
-	return s.repo.Create(ctx, user)
+// Create creates a new user, optionally creates a profile, and publishes
+// a user.created event for eventual consistency with downstream services.
+func (s *Service) Create(ctx context.Context, user *domain.User, displayName, avatarURL string) (*domain.UserResponse, error) {
+	resp, err := s.repo.Create(ctx, user)
+	if err != nil {
+		return nil, err
+	}
+
+	// Create profile if display info was provided (e.g. from email/password registration)
+	if displayName != "" || avatarURL != "" {
+		_ = s.profileRepo.Upsert(ctx, &domain.Profile{
+			UserID:      user.ID,
+			DisplayName: displayName,
+			AvatarURL:   avatarURL,
+			UpdatedAt:   time.Now().UTC(),
+		})
+	}
+
+	// Publish user.created event for eventual consistency
+	s.publishUserCreated(ctx, user.ID, user.Email, displayName, avatarURL)
+
+	return resp, nil
 }
 
 // Update updates a user.
@@ -109,7 +185,7 @@ func (s *Service) HandleGoogleCallback(ctx context.Context, code string) (*domai
 		return nil, fmt.Errorf("failed to generate JWT: %w", err)
 	}
 
-	return domain.NewAuthResponse(user, jwtToken), nil
+	return domain.NewAuthResponse(user, googleUser.Name, googleUser.Picture, jwtToken), nil
 }
 
 // ValidateJWT validates a JWT token and returns the user ID.
@@ -167,6 +243,85 @@ func (s *Service) fetchGoogleUserInfo(ctx context.Context, accessToken string) (
 	return &info, nil
 }
 
+// ─── Profile CRUD ───────────────────────────────────────────────────────────
+
+// GetProfile retrieves the universal profile for a user.
+func (s *Service) GetProfile(ctx context.Context, userID string) (*domain.Profile, error) {
+	return s.profileRepo.GetByUserID(ctx, userID)
+}
+
+// SearchUsers searches for users by display_name or email using case-insensitive partial match.
+// Filters out the calling user from results.
+func (s *Service) SearchUsers(ctx context.Context, searchTerm string, excludeUserID string, limit int) ([]*domain.Profile, error) {
+	return s.profileRepo.SearchUsers(ctx, searchTerm, excludeUserID, limit)
+}
+
+// UpdateProfile creates or updates a user's universal profile.
+func (s *Service) UpdateProfile(ctx context.Context, profile *domain.Profile) error {
+	return s.profileRepo.Upsert(ctx, profile)
+}
+
+// ─── Dating Profile CRUD ───────────────────────────────────────────────────
+
+// GetDatingProfile retrieves the dating profile for a user.
+func (s *Service) GetDatingProfile(ctx context.Context, userID string) (*domain.DatingProfile, error) {
+	return s.datingRepo.GetByUserID(ctx, userID)
+}
+
+// UpdateDatingProfile creates or updates a dating profile.
+func (s *Service) UpdateDatingProfile(ctx context.Context, profile *domain.DatingProfile) error {
+	return s.datingRepo.Upsert(ctx, profile)
+}
+
+// DeleteDatingProfile removes a dating profile.
+func (s *Service) DeleteDatingProfile(ctx context.Context, userID string) error {
+	return s.datingRepo.Delete(ctx, userID)
+}
+
+// ─── Worker Profile CRUD ────────────────────────────────────────────────────
+
+// GetWorkerProfile retrieves the worker profile for a user.
+func (s *Service) GetWorkerProfile(ctx context.Context, userID string) (*domain.WorkerProfile, error) {
+	return s.workerRepo.GetByUserID(ctx, userID)
+}
+
+// UpdateWorkerProfile creates or updates a worker profile.
+func (s *Service) UpdateWorkerProfile(ctx context.Context, profile *domain.WorkerProfile) error {
+	return s.workerRepo.Upsert(ctx, profile)
+}
+
+// DeleteWorkerProfile removes a worker profile.
+func (s *Service) DeleteWorkerProfile(ctx context.Context, userID string) error {
+	return s.workerRepo.Delete(ctx, userID)
+}
+
+// ─── Profile Photo CRUD ─────────────────────────────────────────────────────
+
+// ListPhotos retrieves all profile photos for a user.
+func (s *Service) ListPhotos(ctx context.Context, userID string) ([]*domain.ProfilePhoto, error) {
+	return s.photoRepo.ListByUserID(ctx, userID)
+}
+
+// AddPhoto adds a new profile photo.
+func (s *Service) AddPhoto(ctx context.Context, photo *domain.ProfilePhoto) error {
+	return s.photoRepo.Create(ctx, photo)
+}
+
+// DeletePhoto removes a profile photo.
+func (s *Service) DeletePhoto(ctx context.Context, photoID string) error {
+	return s.photoRepo.Delete(ctx, photoID)
+}
+
+// SetPrimaryPhoto sets a photo as the primary profile photo.
+func (s *Service) SetPrimaryPhoto(ctx context.Context, photoID, userID string) (*domain.ProfilePhoto, error) {
+	if err := s.photoRepo.SetPrimary(ctx, photoID, userID); err != nil {
+		return nil, err
+	}
+	return s.photoRepo.GetByID(ctx, photoID)
+}
+
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
 func (s *Service) findOrCreateUser(ctx context.Context, googleUser *domain.GoogleUserInfo) (*domain.User, error) {
 	// Check if user already exists by email
 	existing, err := s.repo.FindByEmail(ctx, googleUser.Email)
@@ -175,20 +330,8 @@ func (s *Service) findOrCreateUser(ctx context.Context, googleUser *domain.Googl
 	}
 	if existing != nil {
 		// Sync Google profile changes (name, avatar)
-		needsUpdate := false
-		if existing.Name != googleUser.Name {
-			existing.Name = googleUser.Name
-			needsUpdate = true
-		}
-		if existing.AvatarURL != googleUser.Picture {
-			existing.AvatarURL = googleUser.Picture
-			needsUpdate = true
-		}
-		if needsUpdate {
-			existing.UpdatedAt = time.Now().UTC()
-			if err := s.repo.Update(ctx, existing); err != nil {
-				return nil, err
-			}
+		if err := s.syncGoogleProfile(ctx, existing, googleUser); err != nil {
+			return nil, err
 		}
 		return existing, nil
 	}
@@ -198,8 +341,7 @@ func (s *Service) findOrCreateUser(ctx context.Context, googleUser *domain.Googl
 	user := &domain.User{
 		ID:        uuid.New().String(),
 		Email:     googleUser.Email,
-		Name:      googleUser.Name,
-		AvatarURL: googleUser.Picture,
+		Role:      domain.UserRoleSocialOnly,
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
@@ -207,7 +349,78 @@ func (s *Service) findOrCreateUser(ctx context.Context, googleUser *domain.Googl
 	if _, err := s.repo.Create(ctx, user); err != nil {
 		return nil, err
 	}
+
+	// Create profile with Google data
+	profile := &domain.Profile{
+		UserID:      user.ID,
+		DisplayName: googleUser.Name,
+		AvatarURL:   googleUser.Picture,
+		UpdatedAt:   now,
+	}
+	if err := s.profileRepo.Upsert(ctx, profile); err != nil {
+		return nil, fmt.Errorf("failed to create profile: %w", err)
+	}
+
+	// Publish user.created event for eventual consistency
+	s.publishUserCreated(ctx, user.ID, user.Email, profile.DisplayName, profile.AvatarURL)
+
 	return user, nil
+}
+
+func (s *Service) syncGoogleProfile(ctx context.Context, user *domain.User, googleUser *domain.GoogleUserInfo) error {
+	profile, err := s.profileRepo.GetByUserID(ctx, user.ID)
+	if err != nil {
+		// If not found, create a new profile with Google data
+		if strings.Contains(err.Error(), "not found") {
+			profile = &domain.Profile{
+				UserID:      user.ID,
+				DisplayName: googleUser.Name,
+				AvatarURL:   googleUser.Picture,
+			}
+			return s.profileRepo.Upsert(ctx, profile)
+		}
+		return fmt.Errorf("failed to get profile for sync: %w", err)
+	}
+
+	// Sync Google profile changes
+	needsUpdate := false
+	if profile.DisplayName != googleUser.Name {
+		profile.DisplayName = googleUser.Name
+		needsUpdate = true
+	}
+	if profile.AvatarURL != googleUser.Picture {
+		profile.AvatarURL = googleUser.Picture
+		needsUpdate = true
+	}
+	if needsUpdate {
+		if err := s.profileRepo.Upsert(ctx, profile); err != nil {
+			return err
+		}
+	}
+
+	// Update user timestamp
+	user.UpdatedAt = time.Now().UTC()
+	return s.repo.Update(ctx, user)
+}
+
+// publishUserCreated publishes a user.created event to Kafka (fire-and-forget).
+// If the event publisher is not configured, this is a no-op.
+func (s *Service) publishUserCreated(ctx context.Context, userID, email, displayName, avatarURL string) {
+	if s.eventPublisher == nil {
+		return
+	}
+	event := &userevent.UserEvent{
+		Type:        userevent.UserCreated,
+		UserID:      userID,
+		Email:       email,
+		DisplayName: displayName,
+		AvatarURL:   avatarURL,
+	}
+	if err := s.eventPublisher.Publish(ctx, event); err != nil {
+		// Log but don't fail — eventual consistency means the chat-service
+		// will pick up the user on its next sync.
+		_ = err
+	}
 }
 
 func (s *Service) generateJWT(user *domain.User) (string, error) {
@@ -215,13 +428,67 @@ func (s *Service) generateJWT(user *domain.User) (string, error) {
 	claims := jwt.MapClaims{
 		"sub":   user.ID,
 		"email": user.Email,
-		"name":  user.Name,
 		"iat":   now.Unix(),
 		"exp":   now.Add(72 * time.Hour).Unix(), // 72 hour expiry
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	return token.SignedString(s.jwtSecret)
+}
+
+// Backfill publishes user.created events for all existing users.
+// This is called on startup so previously-registered users appear in the
+// chat-service user cache (eventual consistency backfill).
+func (s *Service) Backfill(ctx context.Context) error {
+	if s.eventPublisher == nil {
+		return nil
+	}
+	page := 1
+	pageSize := 100
+	for {
+		users, total, err := s.repo.List(ctx, page, pageSize)
+		if err != nil {
+			return fmt.Errorf("backfill: list page %d: %w", page, err)
+		}
+		for _, user := range users {
+			displayName := ""
+			avatarURL := ""
+			if profile, err := s.profileRepo.GetByUserID(ctx, user.ID); err == nil && profile != nil {
+				displayName = profile.DisplayName
+				avatarURL = profile.AvatarURL
+			}
+			s.publishUserCreated(ctx, user.ID, user.Email, displayName, avatarURL)
+		}
+		if page*pageSize >= total {
+			break
+		}
+		page++
+	}
+	return nil
+}
+
+func (s *Service) CheckBlockStatus(ctx context.Context, senderID, recipientID string) (bool, error) {
+	if s.blockRepo == nil {
+		return false, nil
+	}
+	return s.blockRepo.IsBlocked(ctx, senderID, recipientID)
+}
+
+func (s *Service) BlockUser(ctx context.Context, blockerID, blockedID string) error {
+	if s.blockRepo == nil {
+		return fmt.Errorf("block repository not configured")
+	}
+	if blockerID == blockedID {
+		return fmt.Errorf("cannot block yourself")
+	}
+	return s.blockRepo.BlockUser(ctx, blockerID, blockedID)
+}
+
+func (s *Service) UnblockUser(ctx context.Context, blockerID, blockedID string) error {
+	if s.blockRepo == nil {
+		return fmt.Errorf("block repository not configured")
+	}
+	return s.blockRepo.UnblockUser(ctx, blockerID, blockedID)
 }
 
 func generateID() string {

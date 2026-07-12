@@ -47,32 +47,36 @@ func drainSend(c *ws.Client) (cleanup func()) {
 }
 
 // ---------------------------------------------------------------------------
-// Hot-path benchmarks — compare the full handleIncomingMessage pipeline with
+// Hot-path benchmarks — compare the full handleIncomingChat pipeline with
 // and without sync.Pool.
+//
+// Note: These benchmarks test the broadcast/envelope pipeline directly rather
+// than going through the real handler, to avoid requiring a ScyllaDB session
+// for persistence. The A/B comparison (pooled vs non-pooled) is preserved.
 // ---------------------------------------------------------------------------
 
-// BenchmarkHotPath_Pooled benchmarks the real handleIncomingChat fallback
-// path with sync.Pool enabled (current implementation, producer=nil).
+// BenchmarkHotPath_Pooled benchmarks the chat broadcast fallback path with
+// sync.Pool enabled.
 func BenchmarkHotPath_Pooled(b *testing.B) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	hub := ws.NewHub(logger)
-	h := NewOpenAPIHandler(nil, hub, nil, logger)
 	client := benchClient(hub, "user-1", "room-1")
 	stop := drainSend(client)
 	defer stop()
 
+	pooled := &poolHandler{hub: hub}
 	chatPayload := json.RawMessage(`{"content":"Hello, World!"}`)
 
 	b.ReportAllocs()
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		h.handleIncomingChat(client, "room-1", chatPayload)
+		pooled.handleIncomingChat(client, "room-1", chatPayload)
 	}
 }
 
-// BenchmarkHotPath_NoPool benchmarks handleIncomingChat with the same steps
-// but without any sync.Pool, for a fair apples-to-apples A/B comparison.
+// BenchmarkHotPath_NoPool benchmarks the chat broadcast fallback path without
+// any sync.Pool, for a fair apples-to-apples A/B comparison.
 func BenchmarkHotPath_NoPool(b *testing.B) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	hub := ws.NewHub(logger)
@@ -89,6 +93,44 @@ func BenchmarkHotPath_NoPool(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		noop.handleIncomingChat(client, "room-1", chatPayload)
 	}
+}
+
+// poolHandler reproduces the broadcast logic of the real handleIncomingChat
+// fallback path WITH sync.Pool usage, for benchmarking pool overhead.
+type poolHandler struct {
+	hub *ws.Hub
+}
+
+var poolHandlerEnvelopePool = sync.Pool{
+	New: func() any { return &domain.WSEnvelope{} },
+}
+
+func (h *poolHandler) handleIncomingChat(client *ws.Client, roomID string, data json.RawMessage) {
+	var chatData struct {
+		Content string `json:"content"`
+	}
+	json.Unmarshal(data, &chatData) //nolint:errcheck
+
+	chatMsg := domain.WSChatMessage{
+		ConversationID: roomID,
+		SenderID:       client.UserID,
+		Content:        chatData.Content,
+		CreatedAt:      fixedTime,
+	}
+
+	// Use pool
+	envelope := poolHandlerEnvelopePool.Get().(*domain.WSEnvelope)
+	envelope.Type = domain.WSMsgTypeChat
+	envelope.RoomID = roomID
+	envelope.Data = chatMsg
+
+	payload, _ := json.Marshal(envelope)
+	envelope.Type = ""
+	envelope.RoomID = ""
+	envelope.Data = nil
+	poolHandlerEnvelopePool.Put(envelope)
+
+	h.hub.SendToRoom(roomID, payload)
 }
 
 // noPoolHandler reproduces the exact logic of the real handleIncomingChat
@@ -187,3 +229,5 @@ func BenchmarkEnvelopePooling(b *testing.B) {
 // Ensure the gorilla/websocket import is used (it's needed for the
 // compilation of ws.NewClient, even though we pass nil).
 var _ = websocket.ErrCloseSent
+
+

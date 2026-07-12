@@ -1,15 +1,17 @@
 package handler
 
 import (
+	"log/slog"
 	"net/http/httputil"
 	"net/url"
 
 	"github.com/labstack/echo/v4"
 	"github.com/ride-sharing/api-gateway/internal/config"
+	"github.com/ride-sharing/api-gateway/internal/middleware"
 )
 
 // RegisterRoutes sets up all routes on the Echo instance.
-func RegisterRoutes(e *echo.Echo, cfg *config.Config) {
+func RegisterRoutes(e *echo.Echo, cfg *config.Config, logger *slog.Logger) {
 	// Public
 	e.GET("/health", healthCheck)
 
@@ -20,9 +22,19 @@ func RegisterRoutes(e *echo.Echo, cfg *config.Config) {
 	auth := e.Group("/v1/auth")
 	auth.Any("/*", proxyTo(cfg.UserServiceURL))
 
-	// Protected
-	api := e.Group("/v1")
-	// TODO: Add auth middleware once Clerk JWT validation is implemented
+	// Protected — only require JWT when Clerk key is configured (production)
+	// In development (CLERK_JWT_KEY empty), auth is bypassed so simulated logins work.
+	var api *echo.Group
+	if cfg.ClerkJWTKey != "" {
+		api = e.Group("/v1", middleware.AuthMiddleware(cfg, logger))
+		// WebSocket — validate JWT via token query param since headers can't be set
+		e.Any("/ws", proxyTo(cfg.ChatServiceURL), middleware.WebSocketAuthMiddleware(cfg, logger))
+	} else {
+		// Dev mode: extract user ID from JWT without signature verification
+		// so the frontend's self-signed dev tokens set the X-User-ID header.
+		api = e.Group("/v1", middleware.DevAuthMiddleware(logger))
+		e.Any("/ws", proxyTo(cfg.ChatServiceURL))
+	}
 
 	// User Service — exact paths + wildcard sub-paths
 	api.Any("/users", proxyTo(cfg.UserServiceURL))
@@ -36,10 +48,18 @@ func RegisterRoutes(e *echo.Echo, cfg *config.Config) {
 	api.Any("/matches/*", proxyTo(cfg.MatchServiceURL))
 	api.Any("/discover", proxyTo(cfg.MatchServiceURL))
 
-	// Chat Service — exact paths + wildcard sub-paths
+	// Chat Service — REST + WebSocket
+	api.Any("/conversations", proxyTo(cfg.ChatServiceURL))
+	api.Any("/conversations/*", proxyTo(cfg.ChatServiceURL))
+	api.Any("/groups", proxyTo(cfg.ChatServiceURL))
+	api.Any("/groups/*", proxyTo(cfg.ChatServiceURL))
 	api.Any("/messages", proxyTo(cfg.ChatServiceURL))
 	api.Any("/messages/*", proxyTo(cfg.ChatServiceURL))
-	api.Any("/ws", proxyTo(cfg.ChatServiceURL))
+	api.Any("/presence", proxyTo(cfg.ChatServiceURL))
+	api.Any("/presence/*", proxyTo(cfg.ChatServiceURL))
+	api.Any("/chat/users", proxyTo(cfg.ChatServiceURL))
+	api.Any("/chat/users/*", proxyTo(cfg.ChatServiceURL))
+
 
 	// Location Service — exact paths + wildcard sub-paths
 	api.Any("/location", proxyTo(cfg.LocationServiceURL))

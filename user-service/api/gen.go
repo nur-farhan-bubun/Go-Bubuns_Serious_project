@@ -13,6 +13,96 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
+// Defines values for DatingProfileRequestGender.
+const (
+	DatingProfileRequestGenderFEMALE DatingProfileRequestGender = "FEMALE"
+	DatingProfileRequestGenderMALE   DatingProfileRequestGender = "MALE"
+	DatingProfileRequestGenderOTHERS DatingProfileRequestGender = "OTHERS"
+)
+
+// Valid indicates whether the value is a known member of the DatingProfileRequestGender enum.
+func (e DatingProfileRequestGender) Valid() bool {
+	switch e {
+	case DatingProfileRequestGenderFEMALE:
+		return true
+	case DatingProfileRequestGenderMALE:
+		return true
+	case DatingProfileRequestGenderOTHERS:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DatingProfileRequestInterestedIn.
+const (
+	DatingProfileRequestInterestedInBOTH   DatingProfileRequestInterestedIn = "BOTH"
+	DatingProfileRequestInterestedInFEMALE DatingProfileRequestInterestedIn = "FEMALE"
+	DatingProfileRequestInterestedInMALE   DatingProfileRequestInterestedIn = "MALE"
+)
+
+// Valid indicates whether the value is a known member of the DatingProfileRequestInterestedIn enum.
+func (e DatingProfileRequestInterestedIn) Valid() bool {
+	switch e {
+	case DatingProfileRequestInterestedInBOTH:
+		return true
+	case DatingProfileRequestInterestedInFEMALE:
+		return true
+	case DatingProfileRequestInterestedInMALE:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DatingProfileRequestRelationshipGoal.
+const (
+	CASUAL  DatingProfileRequestRelationshipGoal = "CASUAL"
+	SERIOUS DatingProfileRequestRelationshipGoal = "SERIOUS"
+)
+
+// Valid indicates whether the value is a known member of the DatingProfileRequestRelationshipGoal enum.
+func (e DatingProfileRequestRelationshipGoal) Valid() bool {
+	switch e {
+	case CASUAL:
+		return true
+	case SERIOUS:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for UserResponseRole.
+const (
+	DATINGONLY UserResponseRole = "DATING_ONLY"
+	JOBSEEKER  UserResponseRole = "JOB_SEEKER"
+	POWERUSER  UserResponseRole = "POWER_USER"
+	SOCIALONLY UserResponseRole = "SOCIAL_ONLY"
+)
+
+// Valid indicates whether the value is a known member of the UserResponseRole enum.
+func (e UserResponseRole) Valid() bool {
+	switch e {
+	case DATINGONLY:
+		return true
+	case JOBSEEKER:
+		return true
+	case POWERUSER:
+		return true
+	case SOCIALONLY:
+		return true
+	default:
+		return false
+	}
+}
+
+// AddPhotoRequest defines model for AddPhotoRequest.
+type AddPhotoRequest struct {
+	IsPrimary *bool  `json:"is_primary,omitempty"`
+	S3Url     string `json:"s3_url"`
+}
+
 // AuthResponse defines model for AuthResponse.
 type AuthResponse struct {
 	Token *string              `json:"token,omitempty"`
@@ -21,19 +111,46 @@ type AuthResponse struct {
 
 // CreateUserRequest defines model for CreateUserRequest.
 type CreateUserRequest struct {
-	Bio       *string             `json:"bio,omitempty"`
-	Email     openapi_types.Email `json:"email"`
-	Name      string              `json:"name"`
-	PhotoUrls *[]string           `json:"photo_urls,omitempty"`
+	AvatarUrl   *string             `json:"avatar_url,omitempty"`
+	Bio         *string             `json:"bio,omitempty"`
+	DisplayName *string             `json:"display_name,omitempty"`
+	Email       openapi_types.Email `json:"email"`
+	Phone       *string             `json:"phone,omitempty"`
+}
+
+// DatingProfileRequest defines model for DatingProfileRequest.
+type DatingProfileRequest struct {
+	BirthDate        openapi_types.Date                    `json:"birth_date"`
+	Gender           DatingProfileRequestGender            `json:"gender"`
+	HeightCm         *int                                  `json:"height_cm,omitempty"`
+	InterestedIn     DatingProfileRequestInterestedIn      `json:"interested_in"`
+	RelationshipGoal *DatingProfileRequestRelationshipGoal `json:"relationship_goal,omitempty"`
+}
+
+// DatingProfileRequestGender defines model for DatingProfileRequest.Gender.
+type DatingProfileRequestGender string
+
+// DatingProfileRequestInterestedIn defines model for DatingProfileRequest.InterestedIn.
+type DatingProfileRequestInterestedIn string
+
+// DatingProfileRequestRelationshipGoal defines model for DatingProfileRequest.RelationshipGoal.
+type DatingProfileRequestRelationshipGoal string
+
+// DatingProfileResponse defines model for DatingProfileResponse.
+type DatingProfileResponse struct {
+	BirthDate        *openapi_types.Date `json:"birth_date,omitempty"`
+	Gender           *string             `json:"gender,omitempty"`
+	HeightCm         *int                `json:"height_cm,omitempty"`
+	InterestedIn     *string             `json:"interested_in,omitempty"`
+	RelationshipGoal *string             `json:"relationship_goal,omitempty"`
+	UpdatedAt        *time.Time          `json:"updated_at,omitempty"`
 }
 
 // DeleteUserResponse defines model for DeleteUserResponse.
-//hey
 type DeleteUserResponse struct {
 	Email   *string `json:"email,omitempty"`
 	Id      *string `json:"id,omitempty"`
 	Message *string `json:"message,omitempty"`
-	Name    *string `json:"name,omitempty"`
 }
 
 // ErrorResponse defines model for ErrorResponse.
@@ -49,6 +166,50 @@ type ListUsersResponse struct {
 	Users *[]UserResponse `json:"users,omitempty"`
 }
 
+// BlockUserRequest defines model for BlockUserRequest.
+type BlockUserRequest struct {
+	BlockedId string `json:"blocked_id"`
+}
+
+// BlockUserResponse defines model for BlockUserResponse.
+type BlockUserResponse struct {
+	BlockedId *string `json:"blocked_id,omitempty"`
+	BlockerId *string `json:"blocker_id,omitempty"`
+	Message   *string `json:"message,omitempty"`
+}
+
+// PhotoResponse defines model for PhotoResponse.
+type PhotoResponse struct {
+	CreatedAt *time.Time          `json:"created_at,omitempty"`
+	Id        *openapi_types.UUID `json:"id,omitempty"`
+	IsPrimary *bool               `json:"is_primary,omitempty"`
+	S3Url     *string             `json:"s3_url,omitempty"`
+	SortOrder *int                `json:"sort_order,omitempty"`
+}
+
+// ProfileRequest defines model for ProfileRequest.
+type ProfileRequest struct {
+	AvatarUrl   *string `json:"avatar_url,omitempty"`
+	Bio         *string `json:"bio,omitempty"`
+	DisplayName *string `json:"display_name,omitempty"`
+}
+
+// ProfileResponse defines model for ProfileResponse.
+type ProfileResponse struct {
+	AvatarUrl   *string    `json:"avatar_url,omitempty"`
+	Bio         *string    `json:"bio,omitempty"`
+	DisplayName *string    `json:"display_name,omitempty"`
+	Id          *string    `json:"id,omitempty"`
+	UpdatedAt   *time.Time `json:"updated_at,omitempty"`
+	UserId      *string    `json:"user_id,omitempty"`
+}
+
+// UpdateUserRequest defines model for UpdateUserRequest.
+type UpdateUserRequest struct {
+	Email *openapi_types.Email `json:"email,omitempty"`
+	Phone *string              `json:"phone,omitempty"`
+}
+
 // UserProfileResponse defines model for UserProfileResponse.
 type UserProfileResponse struct {
 	AvatarUrl *string    `json:"avatar_url,omitempty"`
@@ -60,14 +221,34 @@ type UserProfileResponse struct {
 
 // UserResponse defines model for UserResponse.
 type UserResponse struct {
-	AvatarUrl *string    `json:"avatar_url,omitempty"`
-	Bio       *string    `json:"bio,omitempty"`
-	CreatedAt *time.Time `json:"created_at,omitempty"`
-	Email     *string    `json:"email,omitempty"`
-	Id        *string    `json:"id,omitempty"`
-	Name      *string    `json:"name,omitempty"`
-	PhotoUrls *[]string  `json:"photo_urls,omitempty"`
-	UpdatedAt *time.Time `json:"updated_at,omitempty"`
+	CreatedAt   *time.Time        `json:"created_at,omitempty"`
+	Email       *string           `json:"email,omitempty"`
+	Id          *string           `json:"id,omitempty"`
+	IsOnboarded *bool             `json:"is_onboarded,omitempty"`
+	Phone       *string           `json:"phone,omitempty"`
+	Profile     *ProfileResponse  `json:"profile,omitempty"`
+	Role        *UserResponseRole `json:"role,omitempty"`
+	UpdatedAt   *time.Time        `json:"updated_at,omitempty"`
+}
+
+// UserResponseRole defines model for UserResponse.Role.
+type UserResponseRole string
+
+// WorkerProfileRequest defines model for WorkerProfileRequest.
+type WorkerProfileRequest struct {
+	HourlyRate  *float32  `json:"hourly_rate,omitempty"`
+	IsAvailable *bool     `json:"is_available,omitempty"`
+	Skills      *[]string `json:"skills,omitempty"`
+}
+
+// WorkerProfileResponse defines model for WorkerProfileResponse.
+type WorkerProfileResponse struct {
+	CompletedJobsCount *int       `json:"completed_jobs_count,omitempty"`
+	HourlyRate         *float32   `json:"hourly_rate,omitempty"`
+	IsAvailable        *bool      `json:"is_available,omitempty"`
+	RatingAvg          *float32   `json:"rating_avg,omitempty"`
+	Skills             *[]string  `json:"skills,omitempty"`
+	UpdatedAt          *time.Time `json:"updated_at,omitempty"`
 }
 
 // GoogleCallbackParams defines parameters for GoogleCallback.
@@ -92,7 +273,22 @@ type ListUsersParams struct {
 type CreateUserJSONRequestBody = CreateUserRequest
 
 // UpdateUserJSONRequestBody defines body for UpdateUser for application/json ContentType.
-type UpdateUserJSONRequestBody = CreateUserRequest
+type UpdateUserJSONRequestBody = UpdateUserRequest
+
+// UpdateDatingProfileJSONRequestBody defines body for UpdateDatingProfile for application/json ContentType.
+type UpdateDatingProfileJSONRequestBody = DatingProfileRequest
+
+// AddPhotoJSONRequestBody defines body for AddPhoto for application/json ContentType.
+type AddPhotoJSONRequestBody = AddPhotoRequest
+
+// UpdateProfileJSONRequestBody defines body for UpdateProfile for application/json ContentType.
+type UpdateProfileJSONRequestBody = ProfileRequest
+
+// UpdateWorkerProfileJSONRequestBody defines body for UpdateWorkerProfile for application/json ContentType.
+type UpdateWorkerProfileJSONRequestBody = WorkerProfileRequest
+
+// BlockUserJSONRequestBody defines body for BlockUser for application/json ContentType.
+type BlockUserJSONRequestBody = BlockUserRequest
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
@@ -102,24 +298,66 @@ type ServerInterface interface {
 	// Initiate Google OAuth login
 	// (GET /v1/auth/google/login)
 	GoogleLogin(ctx echo.Context) error
-	// Get a user by ID (internal service-to-service)
+	// Get a user by ID (internal service-to-service, includes profile)
 	// (GET /v1/internal/users/{id})
 	GetUserByIdInternal(ctx echo.Context, id string) error
 	// List users with pagination
 	// (GET /v1/users)
 	ListUsers(ctx echo.Context, params ListUsersParams) error
-	// Create a new user
+	// Create a new user with optional universal profile
 	// (POST /v1/users)
 	CreateUser(ctx echo.Context) error
-	// Delete a user
+	// Delete a user and all associated profiles
 	// (DELETE /v1/users/{id})
 	DeleteUser(ctx echo.Context, id string) error
-	// Get a user by ID
+	// Get a user by ID (includes universal profile)
 	// (GET /v1/users/{id})
 	GetUserById(ctx echo.Context, id string) error
-	// Update an existing user
+	// Update user identity fields
 	// (PUT /v1/users/{id})
 	UpdateUser(ctx echo.Context, id string) error
+	// Delete the dating profile for a user
+	// (DELETE /v1/users/{id}/dating-profile)
+	DeleteDatingProfile(ctx echo.Context, id string) error
+	// Get the dating profile for a user
+	// (GET /v1/users/{id}/dating-profile)
+	GetDatingProfile(ctx echo.Context, id string) error
+	// Create or update the dating profile (upsert)
+	// (PUT /v1/users/{id}/dating-profile)
+	UpdateDatingProfile(ctx echo.Context, id string) error
+	// List all profile photos for a user
+	// (GET /v1/users/{id}/photos)
+	ListPhotos(ctx echo.Context, id string) error
+	// Add a new profile photo
+	// (POST /v1/users/{id}/photos)
+	AddPhoto(ctx echo.Context, id string) error
+	// Delete a profile photo
+	// (DELETE /v1/users/{id}/photos/{photoId})
+	DeletePhoto(ctx echo.Context, id string, photoId openapi_types.UUID) error
+	// Set a photo as the primary profile photo
+	// (PUT /v1/users/{id}/photos/{photoId}/primary)
+	SetPrimaryPhoto(ctx echo.Context, id string, photoId openapi_types.UUID) error
+	// Get the universal profile for a user
+	// (GET /v1/users/{id}/profile)
+	GetProfile(ctx echo.Context, id string) error
+	// Create or update the universal profile (upsert)
+	// (PUT /v1/users/{id}/profile)
+	UpdateProfile(ctx echo.Context, id string) error
+	// Delete the worker profile for a user
+	// (DELETE /v1/users/{id}/worker-profile)
+	DeleteWorkerProfile(ctx echo.Context, id string) error
+	// Get the worker/job-seeker profile
+	// (GET /v1/users/{id}/worker-profile)
+	GetWorkerProfile(ctx echo.Context, id string) error
+	// Create or update the worker profile (upsert)
+	// (PUT /v1/users/{id}/worker-profile)
+	UpdateWorkerProfile(ctx echo.Context, id string) error
+	// Block another user
+	// (POST /v1/users/{id}/block)
+	BlockUser(ctx echo.Context, id string) error
+	// Unblock a previously blocked user
+	// (DELETE /v1/users/{id}/block/{blockedId})
+	UnblockUser(ctx echo.Context, id string, blockedId string) error
 }
 
 // ServerInterfaceWrapper converts echo contexts to parameters.
@@ -259,6 +497,254 @@ func (w *ServerInterfaceWrapper) UpdateUser(ctx echo.Context) error {
 	return err
 }
 
+// DeleteDatingProfile converts echo context to params.
+func (w *ServerInterfaceWrapper) DeleteDatingProfile(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.DeleteDatingProfile(ctx, id)
+	return err
+}
+
+// GetDatingProfile converts echo context to params.
+func (w *ServerInterfaceWrapper) GetDatingProfile(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.GetDatingProfile(ctx, id)
+	return err
+}
+
+// UpdateDatingProfile converts echo context to params.
+func (w *ServerInterfaceWrapper) UpdateDatingProfile(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.UpdateDatingProfile(ctx, id)
+	return err
+}
+
+// ListPhotos converts echo context to params.
+func (w *ServerInterfaceWrapper) ListPhotos(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.ListPhotos(ctx, id)
+	return err
+}
+
+// AddPhoto converts echo context to params.
+func (w *ServerInterfaceWrapper) AddPhoto(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.AddPhoto(ctx, id)
+	return err
+}
+
+// DeletePhoto converts echo context to params.
+func (w *ServerInterfaceWrapper) DeletePhoto(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// ------------- Path parameter "photoId" -------------
+	var photoId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "photoId", ctx.Param("photoId"), &photoId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter photoId: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.DeletePhoto(ctx, id, photoId)
+	return err
+}
+
+// SetPrimaryPhoto converts echo context to params.
+func (w *ServerInterfaceWrapper) SetPrimaryPhoto(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// ------------- Path parameter "photoId" -------------
+	var photoId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "photoId", ctx.Param("photoId"), &photoId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter photoId: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.SetPrimaryPhoto(ctx, id, photoId)
+	return err
+}
+
+// GetProfile converts echo context to params.
+func (w *ServerInterfaceWrapper) GetProfile(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.GetProfile(ctx, id)
+	return err
+}
+
+// UpdateProfile converts echo context to params.
+func (w *ServerInterfaceWrapper) UpdateProfile(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.UpdateProfile(ctx, id)
+	return err
+}
+
+// DeleteWorkerProfile converts echo context to params.
+func (w *ServerInterfaceWrapper) DeleteWorkerProfile(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.DeleteWorkerProfile(ctx, id)
+	return err
+}
+
+// GetWorkerProfile converts echo context to params.
+func (w *ServerInterfaceWrapper) GetWorkerProfile(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.GetWorkerProfile(ctx, id)
+	return err
+}
+
+// UpdateWorkerProfile converts echo context to params.
+func (w *ServerInterfaceWrapper) UpdateWorkerProfile(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.UpdateWorkerProfile(ctx, id)
+	return err
+}
+
+// BlockUser converts echo context to params.
+func (w *ServerInterfaceWrapper) BlockUser(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.BlockUser(ctx, id)
+	return err
+}
+
+// UnblockUser converts echo context to params.
+func (w *ServerInterfaceWrapper) UnblockUser(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// ------------- Path parameter "blockedId" -------------
+	var blockedId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "blockedId", ctx.Param("blockedId"), &blockedId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter blockedId: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.UnblockUser(ctx, id, blockedId)
+	return err
+}
+
 // This is a simple interface which specifies echo.Route addition functions which
 // are present on both echo.Echo and echo.Group, since we want to allow using
 // either of them for path registration
@@ -314,5 +800,19 @@ func RegisterHandlersWithOptions(router EchoRouter, si ServerInterface, options 
 	router.DELETE(options.BaseURL+"/v1/users/:id", wrapper.DeleteUser, options.OperationMiddlewares["deleteUser"]...)
 	router.GET(options.BaseURL+"/v1/users/:id", wrapper.GetUserById, options.OperationMiddlewares["getUserById"]...)
 	router.PUT(options.BaseURL+"/v1/users/:id", wrapper.UpdateUser, options.OperationMiddlewares["updateUser"]...)
+	router.DELETE(options.BaseURL+"/v1/users/:id/dating-profile", wrapper.DeleteDatingProfile, options.OperationMiddlewares["deleteDatingProfile"]...)
+	router.GET(options.BaseURL+"/v1/users/:id/dating-profile", wrapper.GetDatingProfile, options.OperationMiddlewares["getDatingProfile"]...)
+	router.PUT(options.BaseURL+"/v1/users/:id/dating-profile", wrapper.UpdateDatingProfile, options.OperationMiddlewares["updateDatingProfile"]...)
+	router.GET(options.BaseURL+"/v1/users/:id/photos", wrapper.ListPhotos, options.OperationMiddlewares["listPhotos"]...)
+	router.POST(options.BaseURL+"/v1/users/:id/photos", wrapper.AddPhoto, options.OperationMiddlewares["addPhoto"]...)
+	router.DELETE(options.BaseURL+"/v1/users/:id/photos/:photoId", wrapper.DeletePhoto, options.OperationMiddlewares["deletePhoto"]...)
+	router.PUT(options.BaseURL+"/v1/users/:id/photos/:photoId/primary", wrapper.SetPrimaryPhoto, options.OperationMiddlewares["setPrimaryPhoto"]...)
+	router.GET(options.BaseURL+"/v1/users/:id/profile", wrapper.GetProfile, options.OperationMiddlewares["getProfile"]...)
+	router.PUT(options.BaseURL+"/v1/users/:id/profile", wrapper.UpdateProfile, options.OperationMiddlewares["updateProfile"]...)
+	router.DELETE(options.BaseURL+"/v1/users/:id/worker-profile", wrapper.DeleteWorkerProfile, options.OperationMiddlewares["deleteWorkerProfile"]...)
+	router.GET(options.BaseURL+"/v1/users/:id/worker-profile", wrapper.GetWorkerProfile, options.OperationMiddlewares["getWorkerProfile"]...)
+	router.PUT(options.BaseURL+"/v1/users/:id/worker-profile", wrapper.UpdateWorkerProfile, options.OperationMiddlewares["updateWorkerProfile"]...)
+	router.POST(options.BaseURL+"/v1/users/:id/block", wrapper.BlockUser, options.OperationMiddlewares["blockUser"]...)
+	router.DELETE(options.BaseURL+"/v1/users/:id/block/:blockedId", wrapper.UnblockUser, options.OperationMiddlewares["unblockUser"]...)
 
 }

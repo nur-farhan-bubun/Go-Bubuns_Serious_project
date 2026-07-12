@@ -2,148 +2,17 @@ openapi: "3.0.3"
 info:
   title: User Service API
   description: |
-    API for user management and Google OAuth authentication.
+    API for user management, Google OAuth authentication, and polymorphic
+    profile types (universal, dating, worker) with photo gallery.
     Part of the ride-sharing microservices platform.
-  version: "1.0.0"
+  version: "2.0.0"
 
 servers:
   - url: http://localhost:8080
     description: Local development
 
 paths:
-  /v1/users:
-    get:
-      operationId: listUsers
-      summary: List users with pagination
-      parameters:
-        - name: page
-          in: query
-          description: Page number (1-based)
-          schema:
-            type: integer
-            default: 1
-            minimum: 1
-        - name: limit
-          in: query
-          description: Items per page (max 100)
-          schema:
-            type: integer
-            default: 20
-            minimum: 1
-            maximum: 100
-      responses:
-        "200":
-          description: Paginated list of users
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ListUsersResponse"
-
-    post:
-      operationId: createUser
-      summary: Create a new user
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/CreateUserRequest"
-      responses:
-        "201":
-          description: Created user
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/UserResponse"
-        "400":
-          description: Invalid request body
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-
-  /v1/users/{id}:
-    get:
-      operationId: getUserById
-      summary: Get a user by ID
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        "200":
-          description: User details
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/UserResponse"
-        "404":
-          description: User not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-
-    put:
-      operationId: updateUser
-      summary: Update an existing user
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/CreateUserRequest"
-      responses:
-        "200":
-          description: Updated user
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/UserResponse"
-        "400":
-          description: Invalid request body
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "404":
-          description: User not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-
-    delete:
-      operationId: deleteUser
-      summary: Delete a user
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        "200":
-          description: User deleted
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/DeleteUserResponse"
-        "404":
-          description: User not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-
+  # ─── Auth ──────────────────────────────────────────────────────────────────
   /v1/auth/google/login:
     get:
       operationId: googleLogin
@@ -183,10 +52,61 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
-  /v1/internal/users/{id}:
+  # ─── User Identity ─────────────────────────────────────────────────────────
+  /v1/users:
     get:
-      operationId: getUserByIdInternal
-      summary: Get a user by ID (internal service-to-service)
+      operationId: listUsers
+      summary: List users with pagination
+      parameters:
+        - name: page
+          in: query
+          description: Page number (1-based)
+          schema:
+            type: integer
+            default: 1
+            minimum: 1
+        - name: limit
+          in: query
+          description: Items per page (max 100)
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 100
+      responses:
+        "200":
+          description: Paginated list of users
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListUsersResponse"
+    post:
+      operationId: createUser
+      summary: Create a new user with optional universal profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateUserRequest"
+      responses:
+        "201":
+          description: Created user with profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserResponse"
+        "400":
+          description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/users/{id}:
+    get:
+      operationId: getUserById
+      summary: Get a user by ID (includes universal profile)
       parameters:
         - name: id
           in: path
@@ -195,7 +115,88 @@ paths:
             type: string
       responses:
         "200":
-          description: User details
+          description: User details with profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserResponse"
+        "404":
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    put:
+      operationId: updateUser
+      summary: Update user identity fields
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateUserRequest"
+      responses:
+        "200":
+          description: Updated user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserResponse"
+        "400":
+          description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteUser
+      summary: Delete a user and all associated profiles
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: User deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteUserResponse"
+        "404":
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # ─── Internal Service-to-Service ───────────────────────────────────────────
+  /v1/internal/users/{id}:
+    get:
+      operationId: getUserByIdInternal
+      summary: Get a user by ID (internal service-to-service, includes profile)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: User details with profile
           content:
             application/json:
               schema:
@@ -207,87 +208,422 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  # ─── Universal Profile ─────────────────────────────────────────────────────
+  /v1/users/{id}/profile:
+    get:
+      operationId: getProfile
+      summary: Get the universal profile for a user
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Universal profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProfileResponse"
+        "404":
+          description: User or profile not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    put:
+      operationId: updateProfile
+      summary: Create or update the universal profile (upsert)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProfileRequest"
+      responses:
+        "200":
+          description: Updated profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProfileResponse"
+        "400":
+          description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # ─── Dating Profile ────────────────────────────────────────────────────────
+  /v1/users/{id}/dating-profile:
+    get:
+      operationId: getDatingProfile
+      summary: Get the dating profile for a user
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Dating profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DatingProfileResponse"
+        "404":
+          description: User or dating profile not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    put:
+      operationId: updateDatingProfile
+      summary: Create or update the dating profile (upsert)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DatingProfileRequest"
+      responses:
+        "200":
+          description: Updated dating profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DatingProfileResponse"
+        "400":
+          description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteDatingProfile
+      summary: Delete the dating profile for a user
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Dating profile deleted
+        "404":
+          description: User or dating profile not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # ─── Worker Profile ────────────────────────────────────────────────────────
+  /v1/users/{id}/worker-profile:
+    get:
+      operationId: getWorkerProfile
+      summary: Get the worker/job-seeker profile
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Worker profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkerProfileResponse"
+        "404":
+          description: User or worker profile not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    put:
+      operationId: updateWorkerProfile
+      summary: Create or update the worker profile (upsert)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkerProfileRequest"
+      responses:
+        "200":
+          description: Updated worker profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkerProfileResponse"
+        "400":
+          description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteWorkerProfile
+      summary: Delete the worker profile for a user
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Worker profile deleted
+        "404":
+          description: User or worker profile not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # ─── Profile Photos ────────────────────────────────────────────────────────
+  /v1/users/{id}/photos:
+    get:
+      operationId: listPhotos
+      summary: List all profile photos for a user
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of profile photos
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PhotoResponse"
+        "404":
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      operationId: addPhoto
+      summary: Add a new profile photo
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddPhotoRequest"
+      responses:
+        "201":
+          description: Photo added
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PhotoResponse"
+        "400":
+          description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/users/{id}/photos/{photoId}:
+    delete:
+      operationId: deletePhoto
+      summary: Delete a profile photo
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: photoId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Photo deleted
+        "404":
+          description: Photo not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/users/{id}/photos/{photoId}/primary:
+    put:
+      operationId: setPrimaryPhoto
+      summary: Set a photo as the primary profile photo
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: photoId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Photo set as primary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PhotoResponse"
+        "404":
+          description: Photo not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # ─── Block / Unblock ───────────────────────────────────────────────────────
+  /v1/users/{id}/block:
+    post:
+      operationId: blockUser
+      summary: Block another user
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: ID of the user who is blocking
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BlockUserRequest"
+      responses:
+        "200":
+          description: User blocked successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BlockUserResponse"
+        "400":
+          description: Invalid request — cannot block yourself
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/users/{id}/block/{blockedId}:
+    delete:
+      operationId: unblockUser
+      summary: Unblock a previously blocked user
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: ID of the user who is unblocking
+          schema:
+            type: string
+        - name: blockedId
+          in: path
+          required: true
+          description: ID of the user to unblock
+          schema:
+            type: string
+      responses:
+        "200":
+          description: User unblocked successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BlockUserResponse"
+        "404":
+          description: Block record not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
 components:
   schemas:
+    # ─── Error ────────────────────────────────────────────────────────────────
     ErrorResponse:
       type: object
+      required: [error]
       properties:
         error:
           type: string
-      required:
-        - error
 
-    CreateUserRequest:
-      type: object
-      properties:
-        email:
-          type: string
-          format: email
-        name:
-          type: string
-          minLength: 1
-          maxLength: 100
-        bio:
-          type: string
-          maxLength: 500
-        photo_urls:
-          type: array
-          items:
-            type: string
-      required:
-        - email
-        - name
-
-    UserResponse:
-      type: object
-      properties:
-        id:
-          type: string
-        email:
-          type: string
-        name:
-          type: string
-        bio:
-          type: string
-        avatar_url:
-          type: string
-        photo_urls:
-          type: array
-          items:
-            type: string
-        created_at:
-          type: string
-          format: date-time
-        updated_at:
-          type: string
-          format: date-time
-
-    DeleteUserResponse:
-      type: object
-      properties:
-        id:
-          type: string
-        email:
-          type: string
-        name:
-          type: string
-        message:
-          type: string
-
-    ListUsersResponse:
-      type: object
-      properties:
-        users:
-          type: array
-          items:
-            $ref: "#/components/schemas/UserResponse"
-        total:
-          type: integer
-        page:
-          type: integer
-        limit:
-          type: integer
-
+    # ─── Auth ─────────────────────────────────────────────────────────────────
     AuthResponse:
       type: object
       properties:
@@ -307,6 +643,240 @@ components:
           type: string
         avatar_url:
           type: string
+        created_at:
+          type: string
+          format: date-time
+
+    # ─── User Identity ───────────────────────────────────────────────────────
+    CreateUserRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+        phone:
+          type: string
+        display_name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        bio:
+          type: string
+          maxLength: 500
+        avatar_url:
+          type: string
+          format: uri
+      required:
+        - email
+
+    UpdateUserRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+        phone:
+          type: string
+
+    UserResponse:
+      type: object
+      properties:
+        id:
+          type: string
+        email:
+          type: string
+        phone:
+          type: string
+        role:
+          type: string
+          enum: [JOB_SEEKER, DATING_ONLY, SOCIAL_ONLY, POWER_USER]
+        is_onboarded:
+          type: boolean
+        profile:
+          $ref: "#/components/schemas/ProfileResponse"
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    DeleteUserResponse:
+      type: object
+      properties:
+        id:
+          type: string
+        email:
+          type: string
+        message:
+          type: string
+
+    ListUsersResponse:
+      type: object
+      properties:
+        users:
+          type: array
+          items:
+            $ref: "#/components/schemas/UserResponse"
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
+
+    # ─── Universal Profile ───────────────────────────────────────────────────
+    ProfileRequest:
+      type: object
+      properties:
+        display_name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        avatar_url:
+          type: string
+        bio:
+          type: string
+          maxLength: 500
+
+    ProfileResponse:
+      type: object
+      properties:
+        id:
+          type: string
+        user_id:
+          type: string
+        display_name:
+          type: string
+        avatar_url:
+          type: string
+        bio:
+          type: string
+        updated_at:
+          type: string
+          format: date-time
+
+    # ─── Dating Profile ──────────────────────────────────────────────────────
+    DatingProfileRequest:
+      type: object
+      properties:
+        gender:
+          type: string
+          enum: [MALE, FEMALE, OTHERS]
+        interested_in:
+          type: string
+          enum: [MALE, FEMALE, BOTH]
+        birth_date:
+          type: string
+          format: date
+        height_cm:
+          type: integer
+        relationship_goal:
+          type: string
+          enum: [CASUAL, SERIOUS]
+      required:
+        - gender
+        - interested_in
+        - birth_date
+
+    DatingProfileResponse:
+      type: object
+      properties:
+        gender:
+          type: string
+        interested_in:
+          type: string
+        birth_date:
+          type: string
+          format: date
+        height_cm:
+          type: integer
+        relationship_goal:
+          type: string
+        updated_at:
+          type: string
+          format: date-time
+
+    # ─── Worker Profile ──────────────────────────────────────────────────────
+    WorkerProfileRequest:
+      type: object
+      properties:
+        skills:
+          type: array
+          items:
+            type: string
+        hourly_rate:
+          type: number
+          format: float
+        is_available:
+          type: boolean
+
+    WorkerProfileResponse:
+      type: object
+      properties:
+        skills:
+          type: array
+          items:
+            type: string
+        hourly_rate:
+          type: number
+          format: float
+        is_available:
+          type: boolean
+        completed_jobs_count:
+          type: integer
+        rating_avg:
+          type: number
+          format: float
+        updated_at:
+          type: string
+          format: date-time
+
+    # ─── Block / Unblock ──────────────────────────────────────────────────────
+    BlockUserRequest:
+      type: object
+      required:
+        - blocked_id
+      properties:
+        blocked_id:
+          type: string
+          description: ID of the user to block
+
+    BlockUserResponse:
+      type: object
+      properties:
+        message:
+          type: string
+        blocker_id:
+          type: string
+        blocked_id:
+          type: string
+
+    # ─── Profile Photos ──────────────────────────────────────────────────────
+    AddPhotoRequest:
+      type: object
+      properties:
+        s3_url:
+          type: string
+          format: uri
+        is_primary:
+          type: boolean
+          default: false
+      required:
+        - s3_url
+
+    PhotoResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        s3_url:
+          type: string
+        sort_order:
+          type: integer
+        is_primary:
+          type: boolean
         created_at:
           type: string
           format: date-time

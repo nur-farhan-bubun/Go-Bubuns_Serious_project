@@ -3,7 +3,6 @@
 import { useState, useRef, useEffect, useMemo } from "react"
 import { motion } from "framer-motion"
 import { useChatStore } from "./ChatStore"
-import { getUserById } from "./ChatData"
 import Image from "next/image"
 
 // ─── Helpers ────────────────────────────────────────────────────────────
@@ -100,12 +99,47 @@ function DotsIcon() {
   )
 }
 
+// ─── Helpers ────────────────────────────────────────────────────────────
+
+/**
+ * Derives a stable color from a user ID string.
+ */
+function userIdColor(id: string): string {
+  const colors = ["#06D6A0", "#ED4245", "#57F287", "#FEE75C", "#EB459E", "#1ABC9C", "#9B59B6", "#3498DB", "#E67E22", "#00BCD4"]
+  let hash = 0
+  for (let i = 0; i < id.length; i++) {
+    hash = id.charCodeAt(i) + ((hash << 5) - hash)
+  }
+  return colors[Math.abs(hash) % colors.length]
+}
+
+/**
+ * Derives initials from a user ID.
+ */
+function userIdInitials(id: string): string {
+  const parts = id.split(/[-_]/)
+  if (parts.length >= 2) {
+    return parts.slice(1).map((p) => p[0]?.toUpperCase() || "").join("").slice(0, 2)
+  }
+  return id.slice(0, 2).toUpperCase()
+}
+
+/**
+ * Derives a display name from a user ID.
+ */
+function userIdDisplayName(id: string): string {
+  const parts = id.split(/[-_]/)
+  if (parts.length >= 2) {
+    return parts.slice(1).map((p) => p.charAt(0).toUpperCase() + p.slice(1)).join(" ").slice(0, 20)
+  }
+  return `User ${id.slice(0, 6)}`
+}
+
 // ─── Message Bubble ─────────────────────────────────────────────────────
 
-function MessageBubble({ msg, isOwn }: { msg: { id: string; senderId: string; content: string; timestamp: string; type: string }; isOwn: boolean }) {
-  const sender = getUserById(msg.senderId)
-  const color = sender?.color || "#5865F2"
-  const initials = sender?.name.split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2) || "??"
+function MessageBubble({ msg, isOwn, onUserClick }: { msg: { id: string; senderId: string; content: string; timestamp: string; type: string }; isOwn: boolean; onUserClick: (userId: string) => void }) {
+  const color = userIdColor(msg.senderId)
+  const initials = userIdInitials(msg.senderId)
 
   if (msg.type === "system") {
     // System message — merged style like Slack/Discord
@@ -152,15 +186,19 @@ function MessageBubble({ msg, isOwn }: { msg: { id: string; senderId: string; co
       animate={{ opacity: 1, y: 0 }}
       className={`flex gap-3 group px-1 py-1 ${isOwn ? "flex-row-reverse" : ""}`}
     >
-      {/* Avatar Column */}
+      {/* Avatar Column — clickable to view profile */}
       <div className="shrink-0 mt-0.5">
         {isOwn ? (
-          <div className="w-8 h-8 rounded-full bg-chat-accent flex items-center justify-center text-[10px] font-bold text-black">
+          <div
+            onClick={() => onUserClick(msg.senderId)}
+            className="w-8 h-8 rounded-full bg-chat-accent flex items-center justify-center text-[10px] font-bold text-black cursor-pointer hover:opacity-80 transition-opacity"
+          >
             Y
           </div>
         ) : (
           <div
-            className="w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-bold text-white shadow-sm"
+            onClick={() => onUserClick(msg.senderId)}
+            className="w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-bold text-white shadow-sm cursor-pointer hover:opacity-80 transition-opacity"
             style={{ backgroundColor: color }}
           >
             {initials}
@@ -171,9 +209,13 @@ function MessageBubble({ msg, isOwn }: { msg: { id: string; senderId: string; co
       {/* Content */}
       <div className={`flex-1 min-w-0 ${isOwn ? "items-end" : ""}`}>
         <div className={`flex items-center gap-2 mb-0.5 ${isOwn ? "flex-row-reverse" : ""}`}>
-          <span className="text-[12px] font-semibold" style={{ color: isOwn ? "#E6FF7B" : color }}>
-            {sender?.name || "Unknown"}
-          </span>
+          <button
+            onClick={() => onUserClick(msg.senderId)}
+            className="text-[12px] font-semibold hover:underline cursor-pointer transition-colors"
+            style={{ color: isOwn ? "#06D6A0" : color }}
+          >
+            {userIdDisplayName(msg.senderId)}
+          </button>
           <span className="text-[10px] text-chat-muted">{formatTime(msg.timestamp)}</span>
         </div>
         <div className={`text-sm text-slate-200 leading-relaxed ${isOwn ? "text-right" : ""}`}>
@@ -187,7 +229,7 @@ function MessageBubble({ msg, isOwn }: { msg: { id: string; senderId: string; co
 // ─── Component ──────────────────────────────────────────────────────────
 
 export default function ChatFeed() {
-  const { activeConversationId, messages, conversations, sendMessage } = useChatStore()
+  const { activeConversationId, messages, conversations, sendMessage, currentUser, setSelectedProfileUser } = useChatStore()
   const [input, setInput] = useState("")
   const listRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -195,6 +237,7 @@ export default function ChatFeed() {
 
 
   const conv = conversations.find((c) => c.id === activeConversationId)
+  const isGroupConv = conv?.type === "group"
   const firstMember = conv?.members[1]
 
   // Auto-scroll to bottom on new messages
@@ -246,22 +289,65 @@ export default function ChatFeed() {
             </svg>
           </button>
 
-          {conv && firstMember ? (
-            <>
-              <div
-                className="w-9 h-9 rounded-2xl flex items-center justify-center text-xs font-bold text-white shrink-0"
-                style={{ backgroundColor: firstMember.color }}
-              >
-                {conv.avatar}
+          {conv ? (
+            isGroupConv ? (
+              <>
+                <div className="w-9 h-9 rounded-2xl flex items-center justify-center text-xs font-bold text-white shrink-0 bg-chat-accent/20 text-chat-accent">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                    <circle cx="9" cy="7" r="4" />
+                    <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                    <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                  </svg>
+                </div>
+                <div className="min-w-0">
+                  <h3 className="text-sm font-semibold text-white truncate">
+                    {conv.name}
+                  </h3>
+                  <p className="text-[10px] text-chat-muted flex items-center gap-1">
+                    {conv.members.length} members · {conv.onlineCount} online
+                  </p>
+                </div>
+              </>
+            ) : firstMember ? (
+              <>
+                <button
+                  onClick={() => setSelectedProfileUser(firstMember.id)}
+                  className="w-9 h-9 rounded-2xl flex items-center justify-center text-xs font-bold text-white shrink-0 hover:opacity-80 transition-opacity cursor-pointer"
+                  style={{ backgroundColor: firstMember.color }}
+                >
+                  {conv.avatar}
+                </button>
+                <div className="min-w-0">
+                  <button
+                    onClick={() => setSelectedProfileUser(firstMember.id)}
+                    className="text-sm font-semibold text-white truncate hover:underline transition-all text-left"
+                  >
+                    {conv.name}
+                  </button>
+                  {firstMember.email && (
+                    <p className="text-[9px] text-chat-muted/70 truncate leading-tight">{firstMember.email}</p>
+                  )}
+                  <p className="text-[10px] text-chat-muted flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-chat-online inline-block" />
+                    {conv.onlineCount} online
+                  </p>
+                </div>
+              </>
+            ) : (
+              <div className="flex items-center gap-3">
+                <div
+                  className="w-9 h-9 rounded-2xl flex items-center justify-center text-xs font-bold text-white shrink-0"
+                  style={{ backgroundColor: "#06D6A0" }}
+                >
+                  {conv.avatar}
+                </div>
+                <div>
+                  <h3 className="text-sm font-semibold text-white">{conv.name}</h3>
+                  <p className="text-[10px] text-chat-muted">Select a conversation</p>
+                </div>
               </div>
-              <div className="min-w-0">
-                <h3 className="text-sm font-semibold text-white truncate">{conv.name}</h3>
-                <p className="text-[10px] text-chat-muted flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-chat-online inline-block" />
-                  {conv.onlineCount} online
-                </p>
-              </div>
-            </>
+            )
           ) : (
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 rounded-2xl bg-chat-card flex items-center justify-center text-xs font-bold text-chat-muted">
@@ -306,13 +392,24 @@ export default function ChatFeed() {
             <div className="flex items-center gap-2">
               <div
                 className="w-10 h-10 rounded-2xl flex items-center justify-center text-sm font-bold text-white shadow-lg"
-                style={{ backgroundColor: firstMember?.color || "#5865F2" }}
+                style={{ backgroundColor: isGroupConv ? "#06D6A0" : (firstMember?.color || "#06D6A0") }}
               >
-                {conv.avatar}
+                {isGroupConv ? (
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                    <circle cx="9" cy="7" r="4" />
+                    <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                    <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                  </svg>
+                ) : (
+                  conv.avatar
+                )}
               </div>
               <div>
                 <p className="text-base font-bold text-white">{conv.name}</p>
-                <p className="text-[11px] text-chat-muted">{conv.members.length} members</p>
+                <p className="text-[11px] text-chat-muted">
+                  {isGroupConv ? `${conv.members.length} members` : `${conv.onlineCount || 0} online`}
+                </p>
               </div>
             </div>
           </div>
@@ -344,12 +441,12 @@ export default function ChatFeed() {
               </div>
 
               {/* Messages */}
-              <div className="space-y-0.5">
-                {group.messages.map((msg, mi) => (
+              <div className="space-y-0.5">                  {group.messages.map((msg, mi) => (
                   <MessageBubble
                     key={msg.id || mi}
                     msg={msg}
-                    isOwn={msg.senderId === "u-me"}
+                    isOwn={msg.senderId === currentUser.id}
+                    onUserClick={setSelectedProfileUser}
                   />
                 ))}
               </div>

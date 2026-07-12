@@ -130,7 +130,7 @@ migrate-location-down:
 
 migrate-chat:
 	@echo "▸ Migrating chat-db (ScyllaDB)..."
-	@cat chat-service/migrations/001_chat.up.sql | docker compose exec -T chat-db cqlsh
+	@cat chat-service/migrations/001_chat.up.sql chat-service/migrations/002_groups.up.sql | docker compose exec -T chat-db cqlsh
 
 migrate-chat-down:
 	@echo "▸ chat-db: no down migration for ScyllaDB (drop keyspace manually if needed)"
@@ -174,3 +174,18 @@ help:
 	@echo "  make clean               Remove build artifacts"
 	@echo ""
 	@echo "Services: $(SERVICES)"
+# ─── gRPC Protobuf Compilation ──────────────────────────────────────────────
+
+.PHONY: compile-proto
+compile-proto:
+	@echo "Compiling gRPC Protocol Buffers..."
+	protoc --proto_path=shared \
+	       --go_out=shared --go_opt=paths=source_relative \
+	       --go-grpc_out=shared --go-grpc_opt=paths=source_relative \
+	       shared/proto/user/user.proto
+
+.PHONY: tidy-all
+tidy-all:
+	cd shared && go mod tidy
+	cd user-service && go mod tidy
+	cd chat-service && go mod tidy
