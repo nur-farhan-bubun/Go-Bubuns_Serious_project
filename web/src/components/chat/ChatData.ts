@@ -19,6 +19,7 @@ export interface Workspace {
 
 export interface Conversation {
   id: string
+  type?: "direct" | "group"
   workspaceId: string
   name: string
   avatar: string

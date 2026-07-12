@@ -3,6 +3,7 @@ package handler
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -516,6 +517,63 @@ func toDomainPhoto(req *api.AddPhotoRequest, userID string) *domain.ProfilePhoto
 		photo.IsPrimary = *req.IsPrimary
 	}
 	return photo
+}
+
+// ─── Search endpoint ─────────────────────────────────────────────────────────
+
+// SearchUsers handles GET /v1/users/search?q=&limit=20.
+// Searches profiles by display_name or email using case-insensitive partial match.
+// Filters out the requesting user from results.
+func (h *OpenAPIHandler) SearchUsers(ctx echo.Context) error {
+	q := ctx.QueryParam("q")
+	if q == "" {
+		return ctx.JSON(http.StatusBadRequest, api.ErrorResponse{Error: "query parameter 'q' is required"})
+	}
+
+	// Extract the requesting user ID from the request (set by auth middleware)
+	userID := ctx.Request().Header.Get("X-User-ID")
+
+	limit := 20
+	if l := ctx.QueryParam("limit"); l != "" {
+		if parsed, err := parseInt(l); err == nil && parsed > 0 && parsed <= 50 {
+			limit = parsed
+		}
+	}
+
+	profiles, err := h.userSvc.SearchUsers(ctx.Request().Context(), q, userID, limit)
+	if err != nil {
+		return ctx.JSON(http.StatusInternalServerError, api.ErrorResponse{Error: "failed to search users"})
+	}
+
+	// Build a simplified response with just user_id, display_name, avatar_url
+	type SearchResult struct {
+		UserId      string `json:"user_id"`
+		DisplayName string `json:"display_name"`
+		AvatarUrl   string `json:"avatar_url,omitempty"`
+	}
+
+	results := make([]SearchResult, 0, len(profiles))
+	for _, p := range profiles {
+		results = append(results, SearchResult{
+			UserId:      p.UserID,
+			DisplayName: p.DisplayName,
+			AvatarUrl:   p.AvatarURL,
+		})
+	}
+
+	return ctx.JSON(http.StatusOK, results)
+}
+
+// parseInt is a simple helper for parsing integers from query params.
+func parseInt(s string) (int, error) {
+	var n int
+	for _, c := range s {
+		if c < '0' || c > '9' {
+			return 0, fmt.Errorf("not a number")
+		}
+		n = n*10 + int(c-'0')
+	}
+	return n, nil
 }
 
 // ─── Block / Unblock endpoints ──────────────────────────────────────────────

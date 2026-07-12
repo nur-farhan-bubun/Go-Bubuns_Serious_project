@@ -13,6 +13,7 @@ import {
   fetchMessages,
   sendMessageAPI,
   createConversation,
+  createGroupConversation,
   connectChatWS,
   fromAPIMessage,
   fromAPIConversation,
@@ -56,6 +57,7 @@ export interface ChatState {
   startConversationWith: (userId: string, displayName: string, userEmail?: string) => Promise<void>
   joinConversation: (convId: string) => Promise<void>
   loadRegisteredUsers: () => Promise<void>
+  createGroup: (name: string, memberIds: string[]) => Promise<string | null>
   setSelectedProfileUser: (userId: string | null) => void
   resetState: () => void
   updateUserPresence: (userId: string, status: "online" | "offline") => void
@@ -111,7 +113,8 @@ function applyPresenceToStore(userId: string, status: "online" | "offline") {
 async function loadConversations(): Promise<Conversation[]> {
   try {
     const apiConvs = await fetchConversations()
-    return apiConvs.map(fromAPIConversation)
+    const registeredUsers = useChatStore.getState().registeredUsers
+    return apiConvs.map((c) => fromAPIConversation(c, registeredUsers))
   } catch (_) {
     return []
   }
@@ -175,7 +178,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   workspaces: [],
   users: [],
   registeredUsers: [],
-  currentUser: { id: "", name: "", email: "", avatar: "", color: "#5865F2", status: "online", role: "Member" },
+  currentUser: { id: "", name: "", email: "", avatar: "", color: "#06D6A0", status: "online", role: "Member" },
   wsStatus: "disconnected",
   selectedProfileUserId: null,
 
@@ -243,7 +246,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       workspaces: [],
       users: [],
       registeredUsers: [],
-      currentUser: { id: "", name: "", email: "", avatar: "", color: "#5865F2", status: "online", role: "Member" },
+      currentUser: { id: "", name: "", email: "", avatar: "", color: "#06D6A0", status: "online", role: "Member" },
       wsStatus: "disconnected",
       selectedProfileUserId: null,
     })
@@ -255,7 +258,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       name: displayName || `User ${userId.slice(0, 6)}`,
       email: userEmail || "",
       avatar: "",
-      color: "#5865F2",
+      color: "#06D6A0",
       status: "online",
       role: "Member",
     }
@@ -343,6 +346,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const memberEmail = userEmail || registeredUser?.email || ""
     const conversation: Conversation = {
       id: newConv.id,
+      type: "direct",
       workspaceId: "",
       name: displayName,
       avatar: displayName.charAt(0).toUpperCase(),
@@ -440,6 +444,65 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
   },
 
+  createGroup: async (name: string, memberIds: string[]) => {
+    const { currentUser } = get()
+
+    const newConv = await createGroupConversation(name, memberIds)
+    if (!newConv) return null
+
+    // Build member list
+    const registeredUserMap = new Map(get().registeredUsers.map((u) => [u.id, u]))
+    const members = [currentUser]
+    for (const memberId of memberIds) {
+      const ru = registeredUserMap.get(memberId)
+      if (ru) {
+        members.push(ru)
+      } else {
+        members.push({
+          id: memberId,
+          name: memberId.slice(0, 8),
+          email: "",
+          avatar: "",
+          color: userColorFromId(memberId),
+          status: "offline" as const,
+          role: "Member",
+        })
+      }
+    }
+
+    const initials = name
+      .split(" ")
+      .map((w: string) => w[0])
+      .join("")
+      .toUpperCase()
+      .slice(0, 2)
+
+    const conversation: Conversation = {
+      id: newConv.id,
+      type: "group",
+      workspaceId: "",
+      name,
+      avatar: initials,
+      lastMessage: "",
+      lastTime: "just now",
+      unread: 0,
+      isActive: true,
+      members,
+      onlineCount: 1,
+    }
+
+    set((s) => ({
+      conversations: upsertConversation(s.conversations, conversation),
+      activeConversationId: newConv.id,
+      activeWorkspaceView: "chat",
+    }))
+
+    // Connect to the new room via WebSocket
+    connectToRoom(currentUser.id, newConv.id)
+
+    return newConv.id
+  },
+
   joinConversation: async (convId: string) => {
     const state = get()
 
@@ -455,33 +518,46 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
 
     let addedToStore = false
+    let targetType: string | undefined = undefined
 
     // Fetch conversations from API to find the one we need
     try {
       const apiConvs = await fetchConversations()
       const target = apiConvs.find((c) => c.id === convId)
+      targetType = target?.type
       if (target) {
-        const conv = fromAPIConversation(target)
-        // Build member list from registered users
-        const s = get()
-        const otherMember = s.registeredUsers.find(
-          (u) => u.id === target.user2_id,
-        )
-        if (otherMember) {
-          conv.members = [
-            s.currentUser,
-            {
-              id: otherMember.id,
-              name: otherMember.name,
-              email: otherMember.email || "",
-              avatar: otherMember.avatar,
-              color: userColorFromId(otherMember.id),
-              status: otherMember.status,
-              role: "Member",
-            },
-          ]
-          conv.onlineCount = otherMember.status === "online" ? 1 : 0
+        const registeredUsers = get().registeredUsers
+        const conv = fromAPIConversation(target, registeredUsers)
+
+        // For direct conversations, ensure current user is in members
+        if (target.type !== "group" && target.user2_id) {
+          const s = get()
+          const otherMember = s.registeredUsers.find(
+            (u) => u.id === target.user2_id,
+          )
+          if (otherMember) {
+            conv.members = [
+              s.currentUser,
+              {
+                id: otherMember.id,
+                name: otherMember.name,
+                email: otherMember.email || "",
+                avatar: otherMember.avatar,
+                color: userColorFromId(otherMember.id),
+                status: otherMember.status,
+                role: "Member",
+              },
+            ]
+            conv.onlineCount = otherMember.status === "online" ? 1 : 0
+          }
+        } else if (target.type === "group") {
+          // Ensure current user is in group members list
+          const s = get()
+          if (!conv.members.find((m) => m.id === s.currentUser.id)) {
+            conv.members = [s.currentUser, ...conv.members]
+          }
         }
+
         // Add to store using upsert to prevent duplicates
         set((prev) => ({
           conversations: upsertConversation(prev.conversations, conv),
@@ -497,6 +573,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       const s = get()
       const fallback: Conversation = {
         id: convId,
+        type: targetType === "group" ? "group" : "direct",
         workspaceId: "",
         name: "Chat",
         avatar: "#",
@@ -536,7 +613,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 // ─── Helper ───────────────────────────────────────────────────────────────
 
 function userColorFromId(id: string): string {
-  const colors = ["#5865F2", "#ED4245", "#57F287", "#FEE75C", "#EB459E", "#1ABC9C", "#9B59B6", "#3498DB", "#E67E22", "#00BCD4"]
+  const colors = ["#06D6A0", "#ED4245", "#57F287", "#FEE75C", "#EB459E", "#1ABC9C", "#9B59B6", "#3498DB", "#E67E22", "#00BCD4"]
   let hash = 0
   for (let i = 0; i < id.length; i++) {
     hash = id.charCodeAt(i) + ((hash << 5) - hash)

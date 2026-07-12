@@ -105,7 +105,7 @@ function DotsIcon() {
  * Derives a stable color from a user ID string.
  */
 function userIdColor(id: string): string {
-  const colors = ["#5865F2", "#ED4245", "#57F287", "#FEE75C", "#EB459E", "#1ABC9C", "#9B59B6", "#3498DB", "#E67E22", "#00BCD4"]
+  const colors = ["#06D6A0", "#ED4245", "#57F287", "#FEE75C", "#EB459E", "#1ABC9C", "#9B59B6", "#3498DB", "#E67E22", "#00BCD4"]
   let hash = 0
   for (let i = 0; i < id.length; i++) {
     hash = id.charCodeAt(i) + ((hash << 5) - hash)
@@ -212,7 +212,7 @@ function MessageBubble({ msg, isOwn, onUserClick }: { msg: { id: string; senderI
           <button
             onClick={() => onUserClick(msg.senderId)}
             className="text-[12px] font-semibold hover:underline cursor-pointer transition-colors"
-            style={{ color: isOwn ? "#E6FF7B" : color }}
+            style={{ color: isOwn ? "#06D6A0" : color }}
           >
             {userIdDisplayName(msg.senderId)}
           </button>
@@ -237,6 +237,7 @@ export default function ChatFeed() {
 
 
   const conv = conversations.find((c) => c.id === activeConversationId)
+  const isGroupConv = conv?.type === "group"
   const firstMember = conv?.members[1]
 
   // Auto-scroll to bottom on new messages
@@ -288,31 +289,65 @@ export default function ChatFeed() {
             </svg>
           </button>
 
-          {conv && firstMember ? (
-            <>
-              <button
-                onClick={() => setSelectedProfileUser(firstMember.id)}
-                className="w-9 h-9 rounded-2xl flex items-center justify-center text-xs font-bold text-white shrink-0 hover:opacity-80 transition-opacity cursor-pointer"
-                style={{ backgroundColor: firstMember.color }}
-              >
-                {conv.avatar}
-              </button>
-              <div className="min-w-0">
-              <button
-                onClick={() => setSelectedProfileUser(firstMember.id)}
-                className="text-sm font-semibold text-white truncate hover:underline transition-all text-left"
-              >
-                {conv.name}
-              </button>
-              {firstMember?.email && (
-                <p className="text-[9px] text-chat-muted/70 truncate leading-tight">{firstMember.email}</p>
-              )}
-              <p className="text-[10px] text-chat-muted flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-chat-online inline-block" />
-                {conv.onlineCount} online
-              </p>
+          {conv ? (
+            isGroupConv ? (
+              <>
+                <div className="w-9 h-9 rounded-2xl flex items-center justify-center text-xs font-bold text-white shrink-0 bg-chat-accent/20 text-chat-accent">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                    <circle cx="9" cy="7" r="4" />
+                    <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                    <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                  </svg>
+                </div>
+                <div className="min-w-0">
+                  <h3 className="text-sm font-semibold text-white truncate">
+                    {conv.name}
+                  </h3>
+                  <p className="text-[10px] text-chat-muted flex items-center gap-1">
+                    {conv.members.length} members · {conv.onlineCount} online
+                  </p>
+                </div>
+              </>
+            ) : firstMember ? (
+              <>
+                <button
+                  onClick={() => setSelectedProfileUser(firstMember.id)}
+                  className="w-9 h-9 rounded-2xl flex items-center justify-center text-xs font-bold text-white shrink-0 hover:opacity-80 transition-opacity cursor-pointer"
+                  style={{ backgroundColor: firstMember.color }}
+                >
+                  {conv.avatar}
+                </button>
+                <div className="min-w-0">
+                  <button
+                    onClick={() => setSelectedProfileUser(firstMember.id)}
+                    className="text-sm font-semibold text-white truncate hover:underline transition-all text-left"
+                  >
+                    {conv.name}
+                  </button>
+                  {firstMember.email && (
+                    <p className="text-[9px] text-chat-muted/70 truncate leading-tight">{firstMember.email}</p>
+                  )}
+                  <p className="text-[10px] text-chat-muted flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-chat-online inline-block" />
+                    {conv.onlineCount} online
+                  </p>
+                </div>
+              </>
+            ) : (
+              <div className="flex items-center gap-3">
+                <div
+                  className="w-9 h-9 rounded-2xl flex items-center justify-center text-xs font-bold text-white shrink-0"
+                  style={{ backgroundColor: "#06D6A0" }}
+                >
+                  {conv.avatar}
+                </div>
+                <div>
+                  <h3 className="text-sm font-semibold text-white">{conv.name}</h3>
+                  <p className="text-[10px] text-chat-muted">Select a conversation</p>
+                </div>
               </div>
-            </>
+            )
           ) : (
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 rounded-2xl bg-chat-card flex items-center justify-center text-xs font-bold text-chat-muted">
@@ -357,13 +392,24 @@ export default function ChatFeed() {
             <div className="flex items-center gap-2">
               <div
                 className="w-10 h-10 rounded-2xl flex items-center justify-center text-sm font-bold text-white shadow-lg"
-                style={{ backgroundColor: firstMember?.color || "#5865F2" }}
+                style={{ backgroundColor: isGroupConv ? "#06D6A0" : (firstMember?.color || "#06D6A0") }}
               >
-                {conv.avatar}
+                {isGroupConv ? (
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                    <circle cx="9" cy="7" r="4" />
+                    <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                    <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                  </svg>
+                ) : (
+                  conv.avatar
+                )}
               </div>
               <div>
                 <p className="text-base font-bold text-white">{conv.name}</p>
-                <p className="text-[11px] text-chat-muted">{conv.members.length} members</p>
+                <p className="text-[11px] text-chat-muted">
+                  {isGroupConv ? `${conv.members.length} members` : `${conv.onlineCount || 0} online`}
+                </p>
               </div>
             </div>
           </div>

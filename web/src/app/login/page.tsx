@@ -198,8 +198,7 @@ export default function LoginPage() {
 
             <button
               type="submit"
-              disabled={isSubmitting}
-              className="w-full flex items-center justify-center gap-2 bg-chat-accent text-black font-semibold rounded-xl py-3 text-sm hover:opacity-90 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={isSubmitting}                  className="w-full flex items-center justify-center gap-2 bg-chat-accent text-black font-semibold rounded-xl py-3 text-sm hover:opacity-90 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isSubmitting ? (
                 <span className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" />
@@ -239,7 +238,7 @@ export default function LoginPage() {
               <div className="grid grid-cols-2 gap-2">
                 {localUsers.map((u) => {
                   const initials = u.name.split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2)
-                  const colors = ["#5865F2", "#ED4245", "#57F287", "#FEE75C", "#EB459E", "#1ABC9C", "#9B59B6", "#3498DB", "#E67E22", "#00BCD4"]
+                  const colors = ["#06D6A0", "#ED4245", "#57F287", "#FEE75C", "#EB459E", "#1ABC9C", "#9B59B6", "#3498DB", "#E67E22", "#00BCD4"]
                   let hash = 0
                   for (let i = 0; i < u.id.length; i++) {
                     hash = u.id.charCodeAt(i) + ((hash << 5) - hash)

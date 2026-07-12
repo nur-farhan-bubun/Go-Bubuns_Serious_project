@@ -42,6 +42,7 @@ type Conversation struct {
 	MatchId   *string    `json:"match_id,omitempty"`
 	User1Id   *string    `json:"user1_id,omitempty"`
 	User2Id   *string    `json:"user2_id,omitempty"`
+	MemberIds []string   `json:"member_ids,omitempty"`
 }
 
 // CreateConversationRequest defines model for CreateConversationRequest.

@@ -526,13 +526,18 @@ func toAPIConversation(c *domain.Conversation) api.Conversation {
 	id := c.ID
 	createdAt := c.CreatedAt
 
-	// For group conversations, include name and type
+	// For group conversations, include name, type, and member IDs
 	if c.Type == domain.ConversationTypeGroup {
 		convType := string(c.Type)
+		memberIDs := c.MemberIDs
+		if memberIDs == nil {
+			memberIDs = []string{}
+		}
 		return api.Conversation{
 			Id:        &id,
 			Type:      &convType,
 			Name:      &c.Name,
+			MemberIds: memberIDs,
 			CreatedAt: &createdAt,
 		}
 	}

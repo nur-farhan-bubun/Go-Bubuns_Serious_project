@@ -85,6 +85,43 @@ func (r *ProfileRepository) Upsert(ctx context.Context, profile *domain.Profile)
 	return nil
 }
 
+// SearchUsers searches profiles by display_name or email using case-insensitive partial match.
+// Excludes a specific user ID (the caller) from results.
+// Returns user_id, display_name, and avatar_url.
+func (r *ProfileRepository) SearchUsers(ctx context.Context, searchTerm string, excludeUserID string, limit int) ([]*domain.Profile, error) {
+	if searchTerm == "" {
+		return nil, nil
+	}
+
+	query := `
+		SELECT p.id, p.user_id, p.display_name, COALESCE(p.avatar_url, ''), COALESCE(p.bio, ''), p.updated_at
+		FROM profiles p
+		JOIN users u ON u.id = p.user_id
+		WHERE (p.display_name ILIKE $1 OR u.email ILIKE $1)
+		  AND p.user_id != $2
+		ORDER BY p.display_name ASC
+		LIMIT $3
+	`
+
+	pattern := "%" + searchTerm + "%"
+	rows, err := r.pool.Query(ctx, query, pattern, excludeUserID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to search users: %w", err)
+	}
+	defer rows.Close()
+
+	var profiles []*domain.Profile
+	for rows.Next() {
+		p, err := scanProfile(rows)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan profile row: %w", err)
+		}
+		profiles = append(profiles, p)
+	}
+
+	return profiles, nil
+}
+
 // Delete removes a profile by user ID.
 func (r *ProfileRepository) Delete(ctx context.Context, userID string) error {
 	query := `DELETE FROM profiles WHERE user_id = $1`

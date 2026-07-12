@@ -51,14 +51,14 @@ export default {
   				'5': 'hsl(var(--chart-5))'
   			},
   			chat: {
-  				bg: '#000000',
-  				panel: '#0B0B0C',
-  				card: '#121214',
-  				inner: '#18181C',
-  				accent: '#E6FF7B',
-  				muted: '#8A8D93',
-  				border: '#1F2228',
-  				online: '#E2FB6C',
+  				bg: '#0a0e1a',
+  				panel: '#111827',
+  				card: '#1a2236',
+  				inner: '#1e293b',
+  				accent: '#06D6A0',
+  				muted: '#94A3B8',
+  				border: '#2d3748',
+  				online: '#34D399',
   			},
   		},
   		borderRadius: {

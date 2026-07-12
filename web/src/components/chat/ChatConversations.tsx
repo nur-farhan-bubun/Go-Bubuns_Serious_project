@@ -3,7 +3,17 @@
 import { useState } from "react"
 import { useChatStore } from "./ChatStore"
 
-// ─── Search Icon ────────────────────────────────────────────────────────
+// ─── SVG Icons ─────────────────────────────────────────────────────────
+
+function GroupPlusIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+      <circle cx="8.5" cy="7" r="4" />
+      <path d="M20 8v6M23 11h-6" />
+    </svg>
+  )
+}
 
 function SearchIcon() {
   return (
@@ -16,7 +26,11 @@ function SearchIcon() {
 
 // ─── Component ──────────────────────────────────────────────────────────
 
-export default function ChatConversations() {
+interface ChatConversationsProps {
+  onOpenCreateGroup?: () => void
+}
+
+export default function ChatConversations({ onOpenCreateGroup }: ChatConversationsProps) {
   const { conversations, activeConversationId, setConversation, workspaces, activeWorkspaceId } = useChatStore()
   const [search, setSearch] = useState("")
 
@@ -47,13 +61,20 @@ export default function ChatConversations() {
               {conversations.length}
             </span>
           </div>
-          <button className="w-7 h-7 rounded-lg flex items-center justify-center text-chat-muted hover:text-white hover:bg-chat-card transition-all">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="1" />
-              <circle cx="19" cy="12" r="1" />
-              <circle cx="5" cy="12" r="1" />
-            </svg>
-          </button>
+          {/* Create Group button */}
+          {onOpenCreateGroup && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                onOpenCreateGroup()
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-chat-accent border border-chat-accent/30 hover:bg-chat-accent/10 hover:text-chat-accent transition-all"
+              title="Create Group Chat"
+            >
+              <GroupPlusIcon />
+              <span>Group</span>
+            </button>
+          )}
         </div>
         {/* Search */}
         <div className="relative">
@@ -89,8 +110,8 @@ export default function ChatConversations() {
         ) : (
           sorted.map((conv) => {
             const isActive = conv.id === activeConversationId
-            const firstMember = conv.members[1] // Skip self
-            const statusColor = "bg-slate-600"
+            const isGroup = conv.type === "group"
+            const firstNonSelfMember = conv.members.find((m) => m.id !== conv.members[0]?.id) || conv.members[1]
 
             return (
               <button
@@ -107,12 +128,23 @@ export default function ChatConversations() {
                   <div
                     className={`w-10 h-10 rounded-2xl flex items-center justify-center text-xs font-bold text-white ${isActive ? "ring-2 ring-chat-accent/30" : ""}`}
                     style={{
-                      backgroundColor: conv.members[1]?.color || "#5865F2",
+                      backgroundColor: isGroup ? "#06D6A0" : (firstNonSelfMember?.color || "#06D6A0"),
                     }}
                   >
-                    {conv.avatar}
+                    {isGroup ? (
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                        <circle cx="9" cy="7" r="4" />
+                        <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                        <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                      </svg>
+                    ) : (
+                      conv.avatar
+                    )}
                   </div>
-                  <span className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-chat-panel ${statusColor}`} />
+                  {!isGroup && (
+                    <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-chat-panel bg-slate-600" />
+                  )}
                 </div>
 
                 {/* Content */}
@@ -122,9 +154,14 @@ export default function ChatConversations() {
                       <span className={`text-sm truncate block ${isActive ? "text-white font-semibold" : "text-slate-300 font-medium"}`}>
                         {conv.name}
                       </span>
-                      {firstMember?.email && (
-                        <span className="text-[9px] text-chat-muted/60 truncate block leading-tight">{firstMember.email}</span>
-                      )}
+                      {/* Show email for direct chats, member count for groups */}
+                      {isGroup ? (
+                        <span className="text-[9px] text-chat-muted/60 truncate block leading-tight">
+                          {conv.members.length} members
+                        </span>
+                      ) : firstNonSelfMember?.email ? (
+                        <span className="text-[9px] text-chat-muted/60 truncate block leading-tight">{firstNonSelfMember.email}</span>
+                      ) : null}
                     </div>
                     <span className="text-[10px] text-chat-muted shrink-0">{conv.lastTime}</span>
                   </div>

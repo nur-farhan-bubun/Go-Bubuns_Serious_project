@@ -65,6 +65,9 @@ func main() {
 	openapiHandler := handler.NewOpenAPIHandler(svc, svc)
 	api.RegisterHandlers(e, openapiHandler)
 
+	// User search endpoint (not in the OpenAPI spec — added manually)
+	e.GET("/v1/users/search", openapiHandler.SearchUsers)
+
 	grpcAddr := ":" + cfg.GRPCPort
 	grpcLis, err := net.Listen("tcp", grpcAddr)
 	if err != nil {

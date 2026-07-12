@@ -23,7 +23,7 @@ const WorkspaceBar = dynamic(
 
 function userColorFromId(id: string): string {
   const colors = [
-    "#5865F2", "#ED4245", "#57F287", "#FEE75C", "#EB459E",
+    "#06D6A0", "#ED4245", "#57F287", "#FEE75C", "#EB459E",
     "#1ABC9C", "#9B59B6", "#3498DB", "#E67E22", "#00BCD4",
   ]
   let hash = 0

@@ -91,7 +91,7 @@ function LoginDropdown({ onClose, dropdownRef }: { onClose: () => void; dropdown
     onClose()
   }
 
-  const colors = ["#5865F2", "#ED4245", "#57F287", "#FEE75C", "#EB459E", "#1ABC9C", "#9B59B6", "#3498DB", "#E67E22", "#00BCD4"]
+  const colors = ["#06D6A0", "#ED4245", "#57F287", "#FEE75C", "#EB459E", "#1ABC9C", "#9B59B6", "#3498DB", "#E67E22", "#00BCD4"]
   function colorFromId(id: string): string {
     let hash = 0
     for (let i = 0; i < id.length; i++) {
@@ -339,8 +339,7 @@ export default function WorkspaceBar() {
         )}
 
         {/* Add */}
-        <button
-          className="w-9 h-9 rounded-xl flex items-center justify-center bg-chat-accent text-black font-bold hover:opacity-90 transition-all"
+        <button            className="w-9 h-9 rounded-xl flex items-center justify-center bg-chat-accent text-black font-bold hover:opacity-90 transition-all"
           title="Add"
         >
           <AddIcon />

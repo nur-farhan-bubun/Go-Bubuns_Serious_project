@@ -1,16 +1,19 @@
 "use client"
 
+import { useState } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { useChatStore } from "./ChatStore"
 import ChatConversations from "./ChatConversations"
 import ChatFeed from "./ChatFeed"
 import ChatInfoSidebar from "./ChatInfoSidebar"
 import UsersSidebar from "./UsersSidebar"
+import CreateGroupDialog from "./CreateGroupDialog"
 
 // ─── Component ──────────────────────────────────────────────────────────
 
 export default function ChatOverlay() {
   const { isChatOpen, closeChat, activeWorkspaceView } = useChatStore()
+  const [isCreateGroupOpen, setIsCreateGroupOpen] = useState(false)
 
   return (
     <AnimatePresence>
@@ -40,7 +43,7 @@ export default function ChatOverlay() {
               {activeWorkspaceView === "users" ? (
                 /* ── Users Directory View ────────────────────────────── */
                 <>
-                  <UsersSidebar />
+                  <UsersSidebar onOpenCreateGroup={() => setIsCreateGroupOpen(true)} />
                   <div className="flex-1 flex items-center justify-center bg-chat-panel">
                     <div className="text-center">
                       <div className="w-16 h-16 rounded-full bg-chat-card flex items-center justify-center mx-auto mb-4">
@@ -63,7 +66,7 @@ export default function ChatOverlay() {
                 <>
                   {/* Conversations */}
                   <div className="hidden md:block">
-                    <ChatConversations />
+                    <ChatConversations onOpenCreateGroup={() => setIsCreateGroupOpen(true)} />
                   </div>
 
                   {/* Main Feed */}
@@ -77,6 +80,12 @@ export default function ChatOverlay() {
               )}
             </div>
           </motion.div>
+
+          {/* ─── Create Group Dialog ───────────────────────────────────── */}
+          <CreateGroupDialog
+            isOpen={isCreateGroupOpen}
+            onClose={() => setIsCreateGroupOpen(false)}
+          />
         </>
       )}
     </AnimatePresence>

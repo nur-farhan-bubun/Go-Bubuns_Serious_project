@@ -34,6 +34,9 @@ type UserService interface {
 	DeletePhoto(ctx context.Context, photoID string) error
 	SetPrimaryPhoto(ctx context.Context, photoID, userID string) (*domain.ProfilePhoto, error)
 
+	// Search
+	SearchUsers(ctx context.Context, searchTerm string, excludeUserID string, limit int) ([]*domain.Profile, error)
+
 	// Block / Unblock
 	BlockUser(ctx context.Context, blockerID, blockedID string) error
 	UnblockUser(ctx context.Context, blockerID, blockedID string) error

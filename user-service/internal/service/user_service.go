@@ -33,6 +33,7 @@ type ProfileRepository interface {
 	GetByUserID(ctx context.Context, userID string) (*domain.Profile, error)
 	Upsert(ctx context.Context, profile *domain.Profile) error
 	Delete(ctx context.Context, userID string) error
+	SearchUsers(ctx context.Context, searchTerm string, excludeUserID string, limit int) ([]*domain.Profile, error)
 }
 
 // DatingProfileRepository defines the persistence contract for dating profile data.
@@ -247,6 +248,12 @@ func (s *Service) fetchGoogleUserInfo(ctx context.Context, accessToken string) (
 // GetProfile retrieves the universal profile for a user.
 func (s *Service) GetProfile(ctx context.Context, userID string) (*domain.Profile, error) {
 	return s.profileRepo.GetByUserID(ctx, userID)
+}
+
+// SearchUsers searches for users by display_name or email using case-insensitive partial match.
+// Filters out the calling user from results.
+func (s *Service) SearchUsers(ctx context.Context, searchTerm string, excludeUserID string, limit int) ([]*domain.Profile, error) {
+	return s.profileRepo.SearchUsers(ctx, searchTerm, excludeUserID, limit)
 }
 
 // UpdateProfile creates or updates a user's universal profile.

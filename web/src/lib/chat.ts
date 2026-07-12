@@ -2,7 +2,8 @@
 // REST + WebSocket client for the chat service, proxied through the API Gateway.
 
 import { getAuthHeaders, getToken } from "./auth"
-import type { ChatMessage, Conversation, ChatUser } from "../components/chat/ChatData"
+import type { ChatMessage, Conversation } from "../components/chat/ChatData"
+import type { ChatUser } from "../components/chat/ChatData"
 
 // ─── Configuration ──────────────────────────────────────────────────────
 
@@ -40,6 +41,7 @@ export interface ChatAPIConversation {
   user1_id?: string      // direct conversation
   user2_id?: string      // direct conversation
   match_id?: string
+  member_ids?: string[]  // member IDs (for group conversations)
   created_at: string
 }
 
@@ -306,6 +308,85 @@ export interface ChatAPIUser {
   avatar_url?: string
 }
 
+// ─── User Search API Call ────────────────────────────────────────────────
+
+export interface SearchUserResult {
+  user_id: string
+  display_name: string
+  avatar_url?: string
+}
+
+/**
+ * Search for users by display_name or email.
+ * First tries the backend API (GET /v1/users/search), then falls back to
+ * searching the chat-service user cache and local registered users.
+ */
+export async function searchUsers(query: string, limit = 20): Promise<SearchUserResult[]> {
+  if (!query.trim()) return []
+
+  const q = query.trim().toLowerCase()
+
+  // Try 1: Backend search API (user-service PostgreSQL ILIKE)
+  try {
+    const res = await fetch(`${API_BASE}/v1/users/search?q=${encodeURIComponent(q)}&limit=${limit}`, authFetchOptions())
+    if (res.ok) {
+      const data: SearchUserResult[] = await res.json()
+      if (Array.isArray(data) && data.length > 0) {
+        return data
+      }
+    }
+  } catch {
+    // Fall through to local search
+  }
+
+  // Try 2: Search chat-service user cache
+  try {
+    const chatUsers = await fetchChatUsers()
+    const matches = chatUsers
+      .filter((u) =>
+        u.display_name?.toLowerCase().includes(q) ||
+        u.email?.toLowerCase().includes(q)
+      )
+      .slice(0, limit)
+      .map((u) => ({
+        user_id: u.user_id,
+        display_name: u.display_name || u.user_id,
+        avatar_url: u.avatar_url,
+      }))
+    if (matches.length > 0) return matches
+  } catch {
+    // Fall through
+  }
+
+  // Try 3: Search user-service all-users list (paginated fallback)
+  try {
+    const res = await fetch(`${API_BASE}/v1/users?limit=${limit}`, authFetchOptions())
+    if (res.ok) {
+      const data = await res.json()
+      const usersList: Record<string, unknown>[] = data.users || data || []
+      if (Array.isArray(usersList)) {
+        const matches: SearchUserResult[] = usersList
+          .filter((u) => {
+            const name = ((u.name || u.display_name || "") as string).toLowerCase()
+            const email = (u.email as string || "").toLowerCase()
+            return name.includes(q) || email.includes(q)
+          })
+          .slice(0, limit)
+          .map((u) => ({
+            user_id: (u.id || u.user_id) as string,
+            display_name: ((u.name || u.display_name || u.id) as string),
+            avatar_url: (u.avatar_url || "") as string,
+          }))
+        if (matches.length > 0) return matches
+      }
+    }
+  } catch {
+    // Fall through
+  }
+
+  return []
+}
+
 // ─── Block / Unblock API Calls ────────────────────────────────────────────
 
 export interface BlockUserResponse {
@@ -435,8 +516,9 @@ export function userIdToInitials(userId: string): string {
 /**
  * Convert a ChatAPIConversation (from the API) to the local Conversation type.
  * Handles both direct and group conversations.
+ * Members are populated from member_ids if available (group conversations).
  */
-export function fromAPIConversation(apiConv: ChatAPIConversation): Conversation {
+export function fromAPIConversation(apiConv: ChatAPIConversation, registeredUsers?: ChatUser[]): Conversation {
   if (apiConv.type === "group") {
     const initials =
       apiConv.name
@@ -446,8 +528,17 @@ export function fromAPIConversation(apiConv: ChatAPIConversation): Conversation 
         .toUpperCase()
         .slice(0, 2) || "G"
 
+    // Populate members from member_ids if available
+    let members: ChatUser[] = []
+    if (apiConv.member_ids && registeredUsers) {
+      members = apiConv.member_ids
+        .map((uid) => registeredUsers.find((u) => u.id === uid))
+        .filter((u): u is ChatUser => u !== undefined)
+    }
+
     return {
       id: apiConv.id,
+      type: "group",
       workspaceId: "",
       name: apiConv.name || "Group",
       avatar: initials,
@@ -455,8 +546,8 @@ export function fromAPIConversation(apiConv: ChatAPIConversation): Conversation 
       lastTime: new Date(apiConv.created_at).toLocaleString(),
       unread: 0,
       isActive: false,
-      members: [],
-      onlineCount: 0,
+      members,
+      onlineCount: members.filter((m) => m.status === "online").length,
     }
   }
 
@@ -467,6 +558,7 @@ export function fromAPIConversation(apiConv: ChatAPIConversation): Conversation 
 
   return {
     id: apiConv.id,
+    type: "direct",
     workspaceId: "",
     name,
     avatar: initials,
