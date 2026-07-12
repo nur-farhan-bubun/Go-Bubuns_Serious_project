@@ -306,6 +306,47 @@ export interface ChatAPIUser {
   avatar_url?: string
 }
 
+// ─── Block / Unblock API Calls ────────────────────────────────────────────
+
+export interface BlockUserResponse {
+  message?: string
+  blocker_id?: string
+  blocked_id?: string
+}
+
+/**
+ * Block a user.
+ * POST /v1/users/{id}/block
+ */
+export async function blockUser(blockerId: string, blockedId: string): Promise<BlockUserResponse | null> {
+  try {
+    const res = await fetch(`${API_BASE}/v1/users/${blockerId}/block`, authFetchOptions({
+      method: "POST",
+      body: JSON.stringify({ blocked_id: blockedId }),
+    }))
+    if (!res.ok) return null
+    return await res.json()
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Unblock a user.
+ * DELETE /v1/users/{id}/block/{blockedId}
+ */
+export async function unblockUser(blockerId: string, blockedId: string): Promise<BlockUserResponse | null> {
+  try {
+    const res = await fetch(`${API_BASE}/v1/users/${blockerId}/block/${blockedId}`, authFetchOptions({
+      method: "DELETE",
+    }))
+    if (!res.ok) return null
+    return await res.json()
+  } catch {
+    return null
+  }
+}
+
 /**
  * Fetch users directly from the user-service API.
  * GET /v1/users — proxied to user-service by the API gateway.

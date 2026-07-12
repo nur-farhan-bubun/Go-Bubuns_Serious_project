@@ -166,6 +166,18 @@ type ListUsersResponse struct {
 	Users *[]UserResponse `json:"users,omitempty"`
 }
 
+// BlockUserRequest defines model for BlockUserRequest.
+type BlockUserRequest struct {
+	BlockedId string `json:"blocked_id"`
+}
+
+// BlockUserResponse defines model for BlockUserResponse.
+type BlockUserResponse struct {
+	BlockedId *string `json:"blocked_id,omitempty"`
+	BlockerId *string `json:"blocker_id,omitempty"`
+	Message   *string `json:"message,omitempty"`
+}
+
 // PhotoResponse defines model for PhotoResponse.
 type PhotoResponse struct {
 	CreatedAt *time.Time          `json:"created_at,omitempty"`
@@ -275,6 +287,9 @@ type UpdateProfileJSONRequestBody = ProfileRequest
 // UpdateWorkerProfileJSONRequestBody defines body for UpdateWorkerProfile for application/json ContentType.
 type UpdateWorkerProfileJSONRequestBody = WorkerProfileRequest
 
+// BlockUserJSONRequestBody defines body for BlockUser for application/json ContentType.
+type BlockUserJSONRequestBody = BlockUserRequest
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 	// Handle Google OAuth callback
@@ -337,6 +352,12 @@ type ServerInterface interface {
 	// Create or update the worker profile (upsert)
 	// (PUT /v1/users/{id}/worker-profile)
 	UpdateWorkerProfile(ctx echo.Context, id string) error
+	// Block another user
+	// (POST /v1/users/{id}/block)
+	BlockUser(ctx echo.Context, id string) error
+	// Unblock a previously blocked user
+	// (DELETE /v1/users/{id}/block/{blockedId})
+	UnblockUser(ctx echo.Context, id string, blockedId string) error
 }
 
 // ServerInterfaceWrapper converts echo contexts to parameters.
@@ -684,6 +705,46 @@ func (w *ServerInterfaceWrapper) UpdateWorkerProfile(ctx echo.Context) error {
 	return err
 }
 
+// BlockUser converts echo context to params.
+func (w *ServerInterfaceWrapper) BlockUser(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.BlockUser(ctx, id)
+	return err
+}
+
+// UnblockUser converts echo context to params.
+func (w *ServerInterfaceWrapper) UnblockUser(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// ------------- Path parameter "blockedId" -------------
+	var blockedId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "blockedId", ctx.Param("blockedId"), &blockedId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter blockedId: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.UnblockUser(ctx, id, blockedId)
+	return err
+}
+
 // This is a simple interface which specifies echo.Route addition functions which
 // are present on both echo.Echo and echo.Group, since we want to allow using
 // either of them for path registration
@@ -751,5 +812,7 @@ func RegisterHandlersWithOptions(router EchoRouter, si ServerInterface, options 
 	router.DELETE(options.BaseURL+"/v1/users/:id/worker-profile", wrapper.DeleteWorkerProfile, options.OperationMiddlewares["deleteWorkerProfile"]...)
 	router.GET(options.BaseURL+"/v1/users/:id/worker-profile", wrapper.GetWorkerProfile, options.OperationMiddlewares["getWorkerProfile"]...)
 	router.PUT(options.BaseURL+"/v1/users/:id/worker-profile", wrapper.UpdateWorkerProfile, options.OperationMiddlewares["updateWorkerProfile"]...)
+	router.POST(options.BaseURL+"/v1/users/:id/block", wrapper.BlockUser, options.OperationMiddlewares["blockUser"]...)
+	router.DELETE(options.BaseURL+"/v1/users/:id/block/:blockedId", wrapper.UnblockUser, options.OperationMiddlewares["unblockUser"]...)
 
 }

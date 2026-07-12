@@ -518,6 +518,45 @@ func toDomainPhoto(req *api.AddPhotoRequest, userID string) *domain.ProfilePhoto
 	return photo
 }
 
+// ─── Block / Unblock endpoints ──────────────────────────────────────────────
+
+// BlockUser handles POST /v1/users/{id}/block.
+func (h *OpenAPIHandler) BlockUser(ctx echo.Context, id string) error {
+	var req api.BlockUserRequest
+	if err := ctx.Bind(&req); err != nil {
+		return ctx.JSON(http.StatusBadRequest, api.ErrorResponse{Error: "invalid request body: " + err.Error()})
+	}
+
+	if err := h.userSvc.BlockUser(ctx.Request().Context(), id, req.BlockedId); err != nil {
+		if strings.Contains(err.Error(), "cannot block yourself") {
+			return ctx.JSON(http.StatusBadRequest, api.ErrorResponse{Error: err.Error()})
+		}
+		return ctx.JSON(http.StatusInternalServerError, api.ErrorResponse{Error: err.Error()})
+	}
+
+	return ctx.JSON(http.StatusOK, api.BlockUserResponse{
+		Message:   strPtr("user blocked successfully"),
+		BlockerId: &id,
+		BlockedId: &req.BlockedId,
+	})
+}
+
+// UnblockUser handles DELETE /v1/users/{id}/block/{blockedId}.
+func (h *OpenAPIHandler) UnblockUser(ctx echo.Context, id string, blockedId string) error {
+	if err := h.userSvc.UnblockUser(ctx.Request().Context(), id, blockedId); err != nil {
+		if strings.Contains(err.Error(), "block record not found") {
+			return ctx.JSON(http.StatusNotFound, api.ErrorResponse{Error: err.Error()})
+		}
+		return ctx.JSON(http.StatusInternalServerError, api.ErrorResponse{Error: err.Error()})
+	}
+
+	return ctx.JSON(http.StatusOK, api.BlockUserResponse{
+		Message:   strPtr("user unblocked successfully"),
+		BlockerId: &id,
+		BlockedId: &blockedId,
+	})
+}
+
 func generateStateToken() string {
 	b := make([]byte, 32)
 	rand.Read(b)

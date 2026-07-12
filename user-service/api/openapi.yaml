@@ -538,6 +538,81 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  # ─── Block / Unblock ───────────────────────────────────────────────────────
+  /v1/users/{id}/block:
+    post:
+      operationId: blockUser
+      summary: Block another user
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: ID of the user who is blocking
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BlockUserRequest"
+      responses:
+        "200":
+          description: User blocked successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BlockUserResponse"
+        "400":
+          description: Invalid request — cannot block yourself
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/users/{id}/block/{blockedId}:
+    delete:
+      operationId: unblockUser
+      summary: Unblock a previously blocked user
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: ID of the user who is unblocking
+          schema:
+            type: string
+        - name: blockedId
+          in: path
+          required: true
+          description: ID of the user to unblock
+          schema:
+            type: string
+      responses:
+        "200":
+          description: User unblocked successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BlockUserResponse"
+        "404":
+          description: Block record not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
 components:
   schemas:
     # ─── Error ────────────────────────────────────────────────────────────────
@@ -756,6 +831,26 @@ components:
         updated_at:
           type: string
           format: date-time
+
+    # ─── Block / Unblock ──────────────────────────────────────────────────────
+    BlockUserRequest:
+      type: object
+      required:
+        - blocked_id
+      properties:
+        blocked_id:
+          type: string
+          description: ID of the user to block
+
+    BlockUserResponse:
+      type: object
+      properties:
+        message:
+          type: string
+        blocker_id:
+          type: string
+        blocked_id:
+          type: string
 
     # ─── Profile Photos ──────────────────────────────────────────────────────
     AddPhotoRequest:

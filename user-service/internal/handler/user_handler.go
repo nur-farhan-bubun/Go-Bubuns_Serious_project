@@ -33,4 +33,8 @@ type UserService interface {
 	AddPhoto(ctx context.Context, photo *domain.ProfilePhoto) error
 	DeletePhoto(ctx context.Context, photoID string) error
 	SetPrimaryPhoto(ctx context.Context, photoID, userID string) (*domain.ProfilePhoto, error)
+
+	// Block / Unblock
+	BlockUser(ctx context.Context, blockerID, blockedID string) error
+	UnblockUser(ctx context.Context, blockerID, blockedID string) error
 }

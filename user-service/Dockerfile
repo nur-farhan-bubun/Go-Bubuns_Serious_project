@@ -1,9 +1,10 @@
 FROM golang:1.25-alpine AS builder
 
 WORKDIR /app
-COPY go.mod go.sum ./
+COPY shared/ /shared/
+COPY user-service/go.mod user-service/go.sum ./
 RUN go mod download
-COPY . .
+COPY user-service/. .
 RUN CGO_ENABLED=0 go build -o /user-service ./cmd/api
 
 FROM alpine:3.19

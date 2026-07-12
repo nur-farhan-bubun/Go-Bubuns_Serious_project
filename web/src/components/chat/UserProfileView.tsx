@@ -1,7 +1,8 @@
 "use client"
 
-import { useMemo } from "react"
+import { useMemo, useState, useCallback } from "react"
 import { useChatStore } from "./ChatStore"
+import { blockUser, unblockUser } from "../../lib/chat"
 import type { ChatUser } from "./ChatData"
 
 // ─── SVG Icons ──────────────────────────────────────────────────────────
@@ -50,6 +51,25 @@ function ShieldIcon() {
   )
 }
 
+function BlockIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="10" />
+      <line x1="4.93" y1="4.93" x2="19.07" y2="19.07" />
+    </svg>
+  )
+}
+
+function UnlockIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="5" y="11" width="14" height="10" rx="2" />
+      <circle cx="12" cy="16" r="1" />
+      <path d="M8 11V7a4 4 0 0 1 8 0" />
+    </svg>
+  )
+}
+
 // ─── Color helpers ──────────────────────────────────────────────────────
 
 function userColorFromId(id: string): string {
@@ -65,6 +85,8 @@ function userColorFromId(id: string): string {
 
 export default function UserProfileView() {
   const { selectedProfileUserId, setSelectedProfileUser, users, currentUser, registeredUsers, startConversationWith } = useChatStore()
+  const [isBlocked, setIsBlocked] = useState(false)
+  const [blockLoading, setBlockLoading] = useState(false)
 
   const profileUser = useMemo((): ChatUser | null => {
     if (!selectedProfileUserId) return null
@@ -109,6 +131,26 @@ export default function UserProfileView() {
     setSelectedProfileUser(null)
     await startConversationWith(profileUser.id, profileUser.name, profileUser.email)
   }
+
+  const handleBlockToggle = useCallback(async () => {
+    if (!profileUser || blockLoading) return
+    setBlockLoading(true)
+    try {
+      if (isBlocked) {
+        const res = await unblockUser(currentUser.id, profileUser.id)
+        if (res) {
+          setIsBlocked(false)
+        }
+      } else {
+        const res = await blockUser(currentUser.id, profileUser.id)
+        if (res) {
+          setIsBlocked(true)
+        }
+      }
+    } finally {
+      setBlockLoading(false)
+    }
+  }, [profileUser, currentUser.id, isBlocked, blockLoading])
 
   return (
     <div className="h-full flex flex-col bg-chat-panel">
@@ -234,13 +276,34 @@ export default function UserProfileView() {
 
       {/* ── Action Footer ───────────────────────────────────────────── */}
       {!isSelf && (
-        <div className="px-4 py-3 border-t border-chat-border shrink-0">
+        <div className="px-4 py-3 border-t border-chat-border shrink-0 space-y-2">
           <button
             onClick={handleStartConversation}
             className="w-full flex items-center justify-center gap-2 bg-chat-accent text-black font-semibold rounded-xl py-3 text-sm hover:opacity-90 transition-all"
           >
             <MessageIcon />
             Send Message
+          </button>
+          <button
+            onClick={handleBlockToggle}
+            disabled={blockLoading}
+            className={`w-full flex items-center justify-center gap-2 rounded-xl py-3 text-sm font-medium transition-all ${
+              isBlocked
+                ? "bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 border border-emerald-500/20"
+                : "bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/20"
+            } disabled:opacity-50 disabled:cursor-not-allowed`}
+          >
+            {blockLoading ? (
+              <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+            ) : isBlocked ? (
+              <UnlockIcon />
+            ) : (
+              <BlockIcon />
+            )}
+            {blockLoading ? (isBlocked ? "Unblocking..." : "Blocking...") : isBlocked ? "Unblock User" : "Block User"}
           </button>
         </div>
       )}
