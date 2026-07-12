@@ -304,14 +304,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
       // API failed — local message stays (offline mode)
     })
 
-    // Send via WebSocket for real-time delivery to other clients
-    if (wsConnection?.isConnected()) {
-      wsConnection.send({
-        type: "chat_message",
-        room_id: activeConversationId,
-        data: { content: content.trim() },
-      })
-    }
+    // Note: broadcast to the other user is handled by the backend.
+    // The REST API handler (openapi_handler.go, SendMessage) persists the
+    // message AND broadcasts it to all WebSocket clients in the room via
+    // broadcastNewMessage(). Sending a separate WebSocket message here would
+    // cause the recipient to receive a duplicate.
 
     // Update last message in conversations list
     set((s) => ({
