@@ -38,7 +38,8 @@ jobs:
           cache-dependency-path: '**/go.sum'
 
       - name: Run Tests
-        run: go test -v -race ./...
+        run: |
+          go test -v -race $(go work edit -json | grep -o '"DiskPath": "[^"]*' | cut -d'"' -f4)
 
   test-frontend:
     needs: changes
