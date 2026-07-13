@@ -1,0 +1,97 @@
+name: CICD pipeline
+on:
+  push:
+    branches: [main, development]
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      services: ${{ steps.filter.outputs.changes }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v4
+        id: filter
+        with:
+          filters: |
+            api-gateway: ['api-gateway/**', 'shared/**', '.github/workflows/**']
+            user-service: ['user-service/**', 'shared/**', '.github/workflows/**']
+            chat-service: ['chat-service/**', 'shared/**', '.github/workflows/**']
+            location-service: ['location-service/**', 'shared/**', '.github/workflows/**']
+            match-service: ['match-service/**', 'shared/**', '.github/workflows/**']
+            web: ['web/**', '.github/workflows/**']
+
+  test-backend:
+    needs: changes
+    if: ${{ needs.changes.outputs.services != '[]' && needs.changes.outputs.services != '["web"]' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+          cache: true
+          cache-dependency-path: '**/go.sum'
+
+      - name: Initialize Workspace Modules
+        run: |
+          go work init
+          go work use ./api-gateway ./user-service ./match-service ./chat-service ./location-service ./shared
+
+      - name: Run Tests
+        run: go test -v -race ./...
+
+  test-frontend:
+    needs: changes
+    if: contains(needs.changes.outputs.services, 'web')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: 'web/package-lock.json'
+      - name: Install & Lint
+        run: |
+          cd web
+          npm ci
+          npm run lint
+
+  build-and-push:
+    needs: [changes, test-backend, test-frontend]
+    # Only push to GCR when GCP secrets are configured.
+    # Without them, the job is skipped (not failed) — perfect for dry runs.
+    if: ${{ always() && needs.changes.outputs.services != '[]' && secrets.GCP_PROJECT_ID != '' }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service: ${{ fromJSON(needs.changes.outputs.services) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and Push to Artifact Registry
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.service }}/Dockerfile
+          push: true
+          tags: gcr.io/${{ secrets.GCP_PROJECT_ID }}/${{ matrix.service }}:${{ github.ref_name }}-${{ github.sha }}
+          build-args: |
+            SERVICE_NAME=${{ matrix.service }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

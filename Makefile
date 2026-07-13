@@ -147,6 +147,14 @@ vet-%:
 vet-shared:
 	cd $(SHARED) && go vet ./pkg/...
 
+# ─── GitHub Actions Workflow Validation ────────────────────────────────────
+
+.PHONY: validate-workflows
+
+validate-workflows:
+	@echo "Validating GitHub Actions workflow files..."
+	python3 scripts/validate-workflows.py
+
 # ─── Clean ────────────────────────────────────────────────────────────────
 
 .PHONY: clean
