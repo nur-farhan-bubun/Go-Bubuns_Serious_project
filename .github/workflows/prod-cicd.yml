@@ -65,9 +65,13 @@ jobs:
   build-and-push:
     needs: [changes, test-backend, test-frontend]
     # Only push to GCR when GCP secrets are configured.
-    # Without them, the job is skipped (not failed) — perfect for dry runs.
-    if: ${{ always() && needs.changes.outputs.services != '[]' && secrets.GCP_PROJECT_ID != '' }}
+    # Without them, the auth and push steps are skipped (not failed) — perfect for dry runs.
+    # Note: secrets context is not available in job-level `if`, so we use
+    # a job-level env var + step-level checks instead.
+    if: ${{ always() && needs.changes.outputs.services != '[]' }}
     runs-on: ubuntu-latest
+    env:
+      GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
     strategy:
       fail-fast: false
       matrix:
@@ -75,7 +79,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Determine if GCP is configured
+        id: gcp-check
+        run: |
+          if [[ -n "${GCP_PROJECT_ID}" ]]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Authenticate to GCP
+        if: steps.gcp-check.outputs.configured == 'true'
         uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY }}
@@ -85,6 +99,7 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Build and Push to Artifact Registry
+        if: steps.gcp-check.outputs.configured == 'true'
         uses: docker/build-push-action@v6
         with:
           context: .
