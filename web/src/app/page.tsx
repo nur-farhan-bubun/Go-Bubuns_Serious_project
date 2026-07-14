@@ -1,7 +1,7 @@
 "use client"
 
 import dynamic from 'next/dynamic'
-import { useEffect } from "react"
+import { Suspense, useEffect } from "react"
 import { useSearchParams } from "next/navigation"
 import ChatOverlay from "../components/chat/ChatOverlay"
 import WorkspaceBar from "../components/chat/WorkspaceBar"
@@ -73,7 +73,9 @@ export default function Home() {
       <ChatOverlay />
 
       {/* Handles OAuth callback and session restoration */}
-      <AuthInitializer />
+      <Suspense fallback={null}>
+        <AuthInitializer />
+      </Suspense>
     </div>
   )
 }
