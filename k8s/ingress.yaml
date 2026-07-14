@@ -15,6 +15,7 @@ spec:
                 name: frontend-service
                 port:
                   number: 3000
+
           - path: /api
             pathType: Prefix
             backend:
@@ -22,27 +23,15 @@ spec:
                 name: api-gateway
                 port:
                   number: 8080
-          - path: /chat
+
+          - path: /ws
             pathType: Prefix
             backend:
               service:
-                name: chat-service
+                name: api-gateway
                 port:
-                  number: 8083
-          - path: /location
-            pathType: Prefix
-            backend:
-              service:
-                name: location-service
-                port:
-                  number: 8084
-          - path: /user
-            pathType: Prefix
-            backend:
-              service:
-                name: user-service
-                port:
-                  number: 8081
+                  number: 8080
+
           - path: /
             pathType: Prefix
             backend:
