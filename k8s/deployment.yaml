@@ -244,11 +244,10 @@ spec:
         - name: NODE_ENV
           value: "production"
         - name: NEXT_PUBLIC_API_URL
-          value: "http://18.142.253.241"
+          value: "/api"
         - name: NEXT_PUBLIC_WEBSOCKET_URL
-          value: "ws://18.142.253.241/ws"
-        - name: BACKEND_API_URL
-          value: "http://api-gateway:8080" 
+          value: "/ws"
+       
         resources:
           requests:
             memory: "256Mi"
