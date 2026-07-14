@@ -17,17 +17,19 @@ const nextConfig: NextConfig = {
   eslint: {
     ignoreDuringBuilds: true,
   },
-  // Proxy API requests to the backend (API gateway on port 8080)
-  // to avoid CORS issues when the frontend (port 3000) calls the API (port 8080).
+  // Proxy API requests to the backend (API gateway).
+  // In development (localhost:3000 → localhost:8080), this avoids CORS issues.
+  // In Kubernetes, BACKEND_API_URL is set to http://api-gateway:8080.
   async rewrites() {
+    const backendUrl = process.env.BACKEND_API_URL || "http://localhost:8080";
     return [
       {
         source: "/v1/:path*",
-        destination: "http://localhost:8080/v1/:path*",
+        destination: `${backendUrl}/v1/:path*`,
       },
       {
         source: "/ws",
-        destination: "http://localhost:8080/ws",
+        destination: `${backendUrl}/ws`,
       },
     ];
   },
