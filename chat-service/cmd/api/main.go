@@ -14,7 +14,7 @@ import (
 	"github.com/ride-sharing/chat-service/internal/config"
 	"github.com/ride-sharing/chat-service/internal/handler"
 	kafkainfra "github.com/ride-sharing/chat-service/internal/kafka"
-	scyllarepo "github.com/ride-sharing/chat-service/internal/repository/scylladb"
+	postgresrepo "github.com/ride-sharing/chat-service/internal/repository/postgres"
 	redisrepo "github.com/ride-sharing/chat-service/internal/repository/redis"
 	"github.com/ride-sharing/chat-service/internal/service"
 	userGRPCClient "github.com/ride-sharing/chat-service/internal/userclient"
@@ -29,14 +29,14 @@ func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	ctx := context.Background()
 
-	// Connect to ScyllaDB
-	chatRepo, err := scyllarepo.New(ctx, cfg.ScyllaURL, logger)
+	// Connect to PostgreSQL
+	chatRepo, err := postgresrepo.New(ctx, cfg.DatabaseURL, logger)
 	if err != nil {
-		logger.Error("failed to connect to ScyllaDB", slog.String("error", err.Error()))
+		logger.Error("failed to connect to PostgreSQL", slog.String("error", err.Error()))
 		os.Exit(1)
 	}
 	defer chatRepo.Close()
-	logger.Info("connected to ScyllaDB", slog.String("url", cfg.ScyllaURL))
+	logger.Info("connected to PostgreSQL", slog.String("url", cfg.DatabaseURL))
 
 	// Connect to Redis for presence
 	presenceRepo, err := redisrepo.NewPresenceRepository(ctx, cfg.RedisURL)

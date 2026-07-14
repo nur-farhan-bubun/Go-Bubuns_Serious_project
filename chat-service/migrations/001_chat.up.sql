@@ -1,30 +1,27 @@
--- ScyllaDB schema for chat service
--- Run via cqlsh or scylla driver
+-- PostgreSQL schema for chat service
+-- Run via: migrate -path chat-service/migrations -database "$DATABASE_URL" up
 
-CREATE KEYSPACE IF NOT EXISTS app_chat
-    WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1};
-
-USE app_chat;
-
--- User IDs are stored as TEXT (not UUID) because auth providers
--- (Clerk, dev-auth) issue non-UUID user identifiers.
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 CREATE TABLE IF NOT EXISTS conversations (
     id         UUID PRIMARY KEY,
     user1_id   TEXT,
     user2_id   TEXT,
     match_id   TEXT,
-    created_at TIMESTAMP
+    created_at TIMESTAMPTZ NOT NULL,
+    type       TEXT DEFAULT 'direct',
+    name       TEXT
 );
 
 CREATE TABLE IF NOT EXISTS messages (
-    conversation_id UUID,
-    id              TIMEUUID,
-    sender_id       TEXT,
-    content         TEXT,
-    created_at      TIMESTAMP,
-    PRIMARY KEY (conversation_id, id)
-) WITH CLUSTERING ORDER BY (id ASC);
+    id              UUID PRIMARY KEY,
+    conversation_id UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+    sender_id       TEXT NOT NULL,
+    content         TEXT NOT NULL,
+    created_at      TIMESTAMPTZ NOT NULL
+);
 
+CREATE INDEX IF NOT EXISTS idx_messages_conversation_id ON messages(conversation_id);
+CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(conversation_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_conversations_user1 ON conversations(user1_id);
 CREATE INDEX IF NOT EXISTS idx_conversations_user2 ON conversations(user2_id);

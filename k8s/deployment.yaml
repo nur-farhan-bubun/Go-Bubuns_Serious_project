@@ -1,0 +1,281 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-gateway-deployment
+  labels:
+    app: api-gateway
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: api-gateway
+  template:
+    metadata:
+      labels:
+        app: api-gateway
+    spec:
+      containers:
+      - name: api-gateway
+        image: nurfarhanbubun49/api-gateway:latest
+        ports:
+        - containerPort: 8080
+        env:
+        - name: PORT
+          value: "8080"
+        - name: USER_SERVICE_URL
+          value: "http://user-service:8081"
+        - name: MATCH_SERVICE_URL
+          value: "http://match-service:8082"
+        - name: CHAT_SERVICE_URL
+          value: "http://chat-service:8083"
+        - name: LOCATION_SERVICE_URL
+          value: "http://location-service:8084"
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-gateway
+spec:
+  selector:
+    app: api-gateway
+  ports:
+    - protocol: TCP
+      port: 8080
+      targetPort: 8080
+  type: LoadBalancer
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: user-service-deployment
+  labels:
+    app: user-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: user-service
+  template:
+    metadata:
+      labels:
+        app: user-service
+    spec:
+      containers:
+      - name: user-service
+        image: nurfarhanbubun49/user-service:latest
+        ports:
+        - containerPort: 8081
+        - containerPort: 50051
+        env:
+        - name: PORT
+          value: "8081"
+        - name: GRPC_PORT
+          value: "50051"
+        - name: DATABASE_URL
+          value: "postgres://postgres:postgres@172.31.28.113:5432/users?sslmode=disable"
+        - name: KAFKA_BROKERS
+          value: "kafka:9092"
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: JWT_SECRET
+              optional: true
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: user-service
+spec:
+  selector:
+    app: user-service
+  ports:
+    - protocol: TCP
+      name: http
+      port: 8081
+      targetPort: 8081
+    - protocol: TCP
+      name: grpc
+      port: 50051
+      targetPort: 50051
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: chat-service-deployment
+  labels:
+    app: chat-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: chat-service
+  template:
+    metadata:
+      labels:
+        app: chat-service
+    spec:
+      containers:
+      - name: chat-service
+        image: nurfarhanbubun49/chat-service:latest
+        ports:
+        - containerPort: 8083
+        env:
+        - name: PORT
+          value: "8083"
+        - name: DATABASE_URL
+          value: "postgres://postgres:postgres@172.31.28.113:5433/chat?sslmode=disable"
+        - name: REDIS_URL
+          value: "redis-service:6379"
+        - name: KAFKA_BROKERS
+          value: "kafka:9092"
+        - name: USER_SERVICE_URL
+          value: "http://user-service:8081"
+        - name: USER_SERVICE_GRPC
+          value: "user-service:50051"
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: chat-service
+spec:
+  selector:
+    app: chat-service
+  ports:
+    - protocol: TCP
+      port: 8083
+      targetPort: 8083
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: location-service-deployment
+  labels:
+    app: location-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: location-service
+  template:
+    metadata:
+      labels:
+        app: location-service
+    spec:
+      containers:
+      - name: location-service
+        image: nurfarhanbubun49/location-service:latest
+        ports:
+        - containerPort: 8084
+        env:
+        - name: PORT
+          value: "8084"
+        - name: REDIS_URL
+          value: "redis-service:6379"
+        - name: DATABASE_URL
+          value: "postgres://postgres:postgres@172.31.28.113:5434/locations?sslmode=disable"
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: location-service
+spec:
+  selector:
+    app: location-service
+  ports:
+    - protocol: TCP
+      port: 8084
+      targetPort: 8084
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend-deployment
+  labels:
+    app: frontend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: frontend
+  template:
+    metadata:
+      labels:
+        app: frontend
+    spec:
+      containers:
+      - name: frontend
+        image: nurfarhanbubun49/nextjs-frontend:latest
+        ports:
+        - containerPort: 3000
+          name: http
+        env:
+        - name: NODE_ENV
+          value: "production"
+        - name: NEXT_PUBLIC_API_URL
+          value: "http://api-gateway:8080"
+        - name: NEXT_PUBLIC_WEBSOCKET_URL
+          value: "ws://api-gateway:8080/ws"
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "300m"
+        readinessProbe:
+          httpGet:
+            path: /
+            port: http
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /
+            port: http
+          initialDelaySeconds: 60
+          periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend-service
+spec:
+  selector:
+    app: frontend
+  ports:
+    - protocol: TCP
+      port: 3000
+      targetPort: 3000
+  type: ClusterIP

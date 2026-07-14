@@ -5,18 +5,18 @@ import (
 	"time"
 
 	"github.com/ride-sharing/chat-service/internal/domain"
-	scyllarepo "github.com/ride-sharing/chat-service/internal/repository/scylladb"
+	postgresrepo "github.com/ride-sharing/chat-service/internal/repository/postgres"
 	redisrepo "github.com/ride-sharing/chat-service/internal/repository/redis"
 )
 
 // Service handles chat business logic.
 type Service struct {
-	chatRepo     *scyllarepo.Repository
+	chatRepo     *postgresrepo.Repository
 	presenceRepo *redisrepo.PresenceRepository
 }
 
 // New creates a new chat service.
-func New(chatRepo *scyllarepo.Repository, presenceRepo *redisrepo.PresenceRepository) *Service {
+func New(chatRepo *postgresrepo.Repository, presenceRepo *redisrepo.PresenceRepository) *Service {
 	return &Service{chatRepo: chatRepo, presenceRepo: presenceRepo}
 }
 

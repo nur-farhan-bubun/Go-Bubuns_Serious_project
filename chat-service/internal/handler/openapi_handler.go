@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 
 	"github.com/ride-sharing/chat-service/api"
@@ -16,7 +17,6 @@ import (
 	kafkainfra "github.com/ride-sharing/chat-service/internal/kafka"
 	"github.com/ride-sharing/chat-service/internal/store"
 	userClient "github.com/ride-sharing/chat-service/internal/userclient"
-	scyllarepo "github.com/ride-sharing/chat-service/internal/repository/scylladb"
 	"github.com/ride-sharing/chat-service/internal/service"
 	ws "github.com/ride-sharing/chat-service/internal/websocket"
 )
@@ -159,7 +159,7 @@ func (h *OpenAPIHandler) CreateConversation(ctx echo.Context) error {
 
 	now := time.Now().UTC()
 	conv := &domain.Conversation{
-		ID:        scyllarepo.NewUUID(),
+		ID:        uuid.New().String(),
 		User1ID:   userID,
 		User2ID:   req.UserId,
 		MatchID:   matchID,
@@ -352,7 +352,7 @@ func (h *OpenAPIHandler) CreateGroupConversation(ctx echo.Context) error {
 
 	now := time.Now().UTC()
 	conv := &domain.Conversation{
-		ID:        scyllarepo.NewUUID(),
+		ID:        uuid.New().String(),
 		Type:      domain.ConversationTypeGroup,
 		Name:      req.Name,
 		MemberIDs: memberIDs,

@@ -97,8 +97,8 @@ migrate-status:
 	@migrate -path match-service/migrations -database "$(MATCH_DB_URL)" version 2>/dev/null || echo "(no migrations applied)"
 	@echo "── location-db ──"
 	@migrate -path location-service/migrations -database "$(LOCATION_DB_URL)" version 2>/dev/null || echo "(no migrations applied)"
-	@echo "── chat-db (ScyllaDB) ──"
-	@echo "(check with: cqlsh localhost 9042 -e \"SELECT * FROM system_schema_migrations;\")"
+	@echo "── chat-db (PostgreSQL) ──"
+	@migrate -path chat-service/migrations -database "$(CHAT_DB_URL)" version 2>/dev/null || echo "(no migrations applied)"
 
 # PostgreSQL services
 
@@ -126,14 +126,17 @@ migrate-location-down:
 	@echo "▸ Rolling back location-db..."
 	@migrate -path location-service/migrations -database "$(LOCATION_DB_URL)" down 1
 
-# ScyllaDB service
+# PostgreSQL service
+
+CHAT_DB_URL := postgres://postgres:postgres@localhost:5433/chat?sslmode=disable
 
 migrate-chat:
-	@echo "▸ Migrating chat-db (ScyllaDB)..."
-	@cat chat-service/migrations/001_chat.up.sql chat-service/migrations/002_groups.up.sql | docker compose exec -T chat-db cqlsh
+	@echo "▸ Migrating chat-db (PostgreSQL)..."
+	@migrate -path chat-service/migrations -database "$(CHAT_DB_URL)" up
 
 migrate-chat-down:
-	@echo "▸ chat-db: no down migration for ScyllaDB (drop keyspace manually if needed)"
+	@echo "▸ Rolling back chat-db..."
+	@migrate -path chat-service/migrations -database "$(CHAT_DB_URL)" down 1
 
 # ─── Lint / Vet ─────────────────────────────────────────────────────────────
 
