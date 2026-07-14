@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-init-script
+spec: {} # ConfigMap schema formatting
+data:
+  init.sql: |
+    CREATE DATABASE users_db;
+    CREATE DATABASE chats_db;
+    CREATE DATABASE locations_db;
