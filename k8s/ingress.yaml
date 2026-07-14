@@ -4,18 +4,14 @@ metadata:
   name: serious-project-ingress
   annotations:
     kubernetes.io/ingress.class: "traefik"
+  
+    traefik.ingress.kubernetes.io/router.middlewares: default-strip-api-prefix@kubernetescrd
 spec:
   ingressClassName: traefik
   rules:
     - http:
         paths:
-          - path: /_next
-            pathType: Prefix
-            backend:
-              service:
-                name: frontend-service
-                port:
-                  number: 3000
+        
           - path: /api
             pathType: Prefix
             backend:
@@ -23,6 +19,7 @@ spec:
                 name: api-gateway
                 port:
                   number: 8080
+        
           - path: /ws
             pathType: Prefix
             backend:
@@ -30,6 +27,15 @@ spec:
                 name: api-gateway
                 port:
                   number: 8080
+       
+          - path: /_next
+            pathType: Prefix
+            backend:
+              service:
+                name: frontend-service
+                port:
+                  number: 3000
+         
           - path: /
             pathType: Prefix
             backend:
