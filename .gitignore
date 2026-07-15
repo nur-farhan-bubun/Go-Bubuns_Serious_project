@@ -1,3 +1,4 @@
+# Environment
 tmp
 .env
 .envrc
@@ -28,32 +29,6 @@ dist-ssr
 *.sln
 *.sw?
 
-# Logs
-logs
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-lerna-debug.log*
-
-node_modules
-dist
-dist-ssr
-*.local
-
-# Editor directories and files
-.vscode/*
-!.vscode/extensions.json
-.idea
-.DS_Store
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?
-
-
 # Tilt build
 build/
 
@@ -62,22 +37,27 @@ build/
 
 # Secrets
 secrets.yaml
-README.md
-README.md
-ReadMePlanv2.md
+
+# ── .md documents (keep locally, not in git tracking) ──
+
+# Planning & scratch docs (root)
+ReadMePlanv*.md
+deploy__project__archi__plan.md
+ChatRoomInstruction.md
+
+# Service-specific docs (keep local for reference)
 chat-service/ARCHITECTURE.md
-README.md
-README.md
 chat-service/TESTING.md
 location-service/Location-01.md
 location-service/Location-service-detail-01.md
-web/ReadMeForMapv2.md
-web/ReadMeForMapv1.md
-web/ChatSectionUIdesing.md
-web/API.md
-.gitignore
-.gitignore
-README.md
 match-service/ARCHITECTURE.md
 user-service/UserServiceDBPlan.md
-README.md
+
+# Web/frontend docs
+web/README.md
+web/API.md
+web/ChatSectionUIdesing.md
+web/ReadMeForMapv*.md
+
+# Architecture docs
+docs/architecture/*.md

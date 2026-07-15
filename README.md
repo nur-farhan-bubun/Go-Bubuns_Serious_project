@@ -1,256 +1,457 @@
-# "Microservices with Go" course project
+<div align="center">
 
-This is the starter code for the "Microservices with Go" project.
+  <h1>Bubun · Social Discovery Platform</h1>
 
-## Project overview
+  <p>
+    <strong>Real-time dating & social discovery platform</strong><br>
+    Go microservices · Next.js frontend · WebSocket real-time · Kafka event bus
+  </p>
 
-In this project‑driven course, you’ll build the backend microservices system for a Uber‑style ride‑sharing app from the ground up—using Go, Docker, and Kubernetes.
+  <p>
+    <a href="#-architecture"><strong>Architecture</strong></a> ·
+    <a href="#-services"><strong>Services</strong></a> ·
+    <a href="#-tech-stack"><strong>Tech Stack</strong></a> ·
+    <a href="#-getting-started"><strong>Getting Started</strong></a> ·
+    <a href="#-deployment"><strong>Deployment</strong></a>
+  </p>
 
-By the end, you’ll have a fully deployed, horizontally scalable ride‑sharing system that’s ready for real traffic. Plus, you’ll walk away with reusable template for building future distributed projects—accelerating your path to become a lead engineer.
+  <br>
 
-Check it out at: https://www.selfmadeengineer.com/
+  <img alt="Go" src="https://img.shields.io/badge/Go-1.25+-00ADD8?logo=go">
+  <img alt="Next.js" src="https://img.shields.io/badge/Next.js-15-000000?logo=next.js">
+  <img alt="License" src="https://img.shields.io/badge/license-MIT-green">
 
-## Service Architecture
+  <br>
+  <br>
 
-Architecture and design documents for each microservice:
+</div>
 
-| Service | Document | Status |
-|---|---|---|
-| User Service | [`user-service/UserServiceDBPlan.md`](user-service/UserServiceDBPlan.md) | ✅ Schema, domain models, repos, API, tests documented |
-| Chat Service | [`chat-service/ARCHITECTURE.md`](chat-service/ARCHITECTURE.md) | Architecture overview |
-| Chat Service (tests) | [`chat-service/TESTING.md`](chat-service/TESTING.md) | Testing guide |
-| Match Service | [`match-service/ARCHITECTURE.md`](match-service/ARCHITECTURE.md) | ✅ Schema, domain, API, swiping flow documented |
-| Location Service | [`location-service/Location-01.md`](location-service/Location-01.md) | Location design |
-| Location Service (detail) | [`location-service/Location-service-detail-01.md`](location-service/Location-service-detail-01.md) | Detailed location design |
+---
 
-Each document covers the relevant database schema, domain models, repository layer, service layer, API endpoints, and testing patterns for that service.
+> **Status:** Active development. Each service is an independent Go module with its own database, Dockerfile, and scaling profile — built to be truly standalone from day one.
 
-## Trip Scheduling Flow
-[![](https://mermaid.ink/img/pako:eNqNVt9v2jAQ_lcsP21qGvGjZSEPlSpaTX1YxWDVpAmpMvZBIkicOQ6UVf3fd4mdEgcKzQOK47v7vjt_d-aVcimAhnSW5vC3gJTDXcyWiiWzlOCTMaVjHmcs1eQpB3X49Xb88J1p2LLd4d4vFWdTUJuYw-HmnYo3oM5sH34fs10Cqf7Qb6oRFL-bnZLz5c3NnmRIRgrwteJGJmXOuTa2eyP0aFAPyXIyHtWO5YaxN7-PEoNJpNrM1nOSCw3Y_QuPWLq0nBvWl4h30fIos_Bhg5n6vMIVDTgVLyNN5II4LO9L65A8wrbyJimAyAkjwlbSBHBwENisQ2vl80T4pfezapbGRW1RHckkYaloILMNi9dsvgYXtHUQv2E-lXwF-hCccQ5ZE3sNiwZ0A_O2sjSw6oPTbB_nWbT3TB3dGEiykGrLlABBtCQTNp_H-sdP8sUwK3EmkGcS2-lnAQV8rUtwVCchGSvJIc8tJ2KoMGxDjxSZKIVapZZrpovc9_2j4nF7whGPifvM8jxepp8XkW2SzAQmOVKMZXoyF6_Nwq5bunetkLxp2HfIUQR8JQts5Bqz9DJGx3K1ZtZdHAVpCc9mZStkc3s-0WZtTFukOsGnB5QeE7u6PM4gKScQsozktmF_TmuN1qidUHZJa6q9V04m2RowlrV1SnbQc5GUq33YacFL_R2faHtPzxXt0ZN1O-6iXbRW1Zu4HxeiqjTJivk6ziPTcp-U1aXD-NPgZ46a21KL061Qj6kzc38_facarzCyv1tOdGgVk7OUpCipOSxjZEI9moBKWCzwKn8tQ8yojiCBGQ3xVTC1muEV_4Z2rNByuks5DbUqwKNKFsuIhgu2znFlZo79C1Cb4L36R8rmkoav9IWGvW_-1XVn0O_1-kE3GAyHgUd3-Lnb8fu9frc_xKfbvQ6CN4_-qyJ0_KDX7Q86QTDoDAfD66ve23_1IPGQ?type=png)](https://mermaid.live/edit#pako:eNqNVt9v2jAQ_lcsP21qGvGjZSEPlSpaTX1YxWDVpAmpMvZBIkicOQ6UVf3fd4mdEgcKzQOK47v7vjt_d-aVcimAhnSW5vC3gJTDXcyWiiWzlOCTMaVjHmcs1eQpB3X49Xb88J1p2LLd4d4vFWdTUJuYw-HmnYo3oM5sH34fs10Cqf7Qb6oRFL-bnZLz5c3NnmRIRgrwteJGJmXOuTa2eyP0aFAPyXIyHtWO5YaxN7-PEoNJpNrM1nOSCw3Y_QuPWLq0nBvWl4h30fIos_Bhg5n6vMIVDTgVLyNN5II4LO9L65A8wrbyJimAyAkjwlbSBHBwENisQ2vl80T4pfezapbGRW1RHckkYaloILMNi9dsvgYXtHUQv2E-lXwF-hCccQ5ZE3sNiwZ0A_O2sjSw6oPTbB_nWbT3TB3dGEiykGrLlABBtCQTNp_H-sdP8sUwK3EmkGcS2-lnAQV8rUtwVCchGSvJIc8tJ2KoMGxDjxSZKIVapZZrpovc9_2j4nF7whGPifvM8jxepp8XkW2SzAQmOVKMZXoyF6_Nwq5bunetkLxp2HfIUQR8JQts5Bqz9DJGx3K1ZtZdHAVpCc9mZStkc3s-0WZtTFukOsGnB5QeE7u6PM4gKScQsozktmF_TmuN1qidUHZJa6q9V04m2RowlrV1SnbQc5GUq33YacFL_R2faHtPzxXt0ZN1O-6iXbRW1Zu4HxeiqjTJivk6ziPTcp-U1aXD-NPgZ46a21KL061Qj6kzc38_facarzCyv1tOdGgVk7OUpCipOSxjZEI9moBKWCzwKn8tQ8yojiCBGQ3xVTC1muEV_4Z2rNByuks5DbUqwKNKFsuIhgu2znFlZo79C1Cb4L36R8rmkoav9IWGvW_-1XVn0O_1-kE3GAyHgUd3-Lnb8fu9frc_xKfbvQ6CN4_-qyJ0_KDX7Q86QTDoDAfD66ve23_1IPGQ)
+---
 
+## 📋 Table of Contents
 
-## Installation
-The project requires a couple tools to run, most of which are part of many developer's toolchains.
+- [Architecture Overview](#-architecture-overview)
+- [Services Breakdown](#-services-breakdown)
+- [Tech Stack](#-tech-stack)
+- [Data Flow](#-data-flow)
+- [Getting Started](#-getting-started)
+- [Makefile Commands](#-makefile-commands)
+- [Deployment](#-deployment)
+- [Project Structure](#-project-structure)
+- [Contributing](#-contributing)
+- [License](#-license)
 
-- Docker
-- Go
-- Tilt
-- A local Kubernetes cluster
+---
 
-### MacOS
+## 🏛 Architecture Overview
 
-1. Install Homebrew from [Homebrew's official website](https://brew.sh/)
-
-2. Install Docker for Desktop from [Docker's official website](https://www.docker.com/products/docker-desktop/)
-
-3. Install Minikube from [Minikube's official website](https://minikube.sigs.k8s.io/docs/)
-
-4. Install Tilt from [Tilt's official website](https://tilt.dev/)
-
-5. Install Go on MacOS using Homebrew:
-```bash
-brew install go
+```
+┌──────────────────────────────────────────────────────────────┐
+│                Next.js 15 (App Router)                       │
+│     Tailwind CSS · Zustand · TanStack Query · maplibre-gl    │
+│     WebSocket Client (Chat + Location) · Framer Motion       │
+└──────────────────────────┬───────────────────────────────────┘
+                           │
+                    HTTP / WS (port 3000)
+                    ┌──────▼──────┐
+                    │ Next.js     │  ← Rewrites /v1/* & /ws
+                    │ Rewrites    │     to API Gateway (no CORS)
+                    └──────┬──────┘
+                           │
+                    ┌──────▼──────┐
+                    │  API Gateway  │  ← Echo v4, JWT validation
+                    │  (Port 8080)  │     Rate limiting, reverse proxy
+                    └──────┬──────┘
+                           │
+     ┌─────────────────────┼────────────────────┬────────────────────┐
+     │                     │                    │                    │
+┌────▼────┐          ┌────▼────┐          ┌────▼────┐          ┌────▼────┐
+│  User   │          │  Match  │          │  Chat   │          │Location │
+│ Service │          │ Service │          │ Service │          │ Service │
+│ :8081   │          │ :8082   │          │ :8083   │          │ :8084   │
+└────┬────┘          └────┬────┘          └────┬────┘          └────┬────┘
+     │                    │                    │                    │
+┌────▼────────┐    ┌────▼────────┐    ┌───────▼────────┐    ┌─────▼─────────┐
+│ PostgreSQL  │    │ PostgreSQL  │    │   PostgreSQL   │    │   Redis       │
+│  (users)    │    │  (matches)  │    │   (messages)   │    │   (GEO)       │
+│  :5432      │    │  :5433      │    │   :5433        │    │   :6379       │
+└─────────────┘    └─────────────┘    └───────┬────────┘    └───────┬────────┘
+                                              │                    │
+                                        ┌─────▼────────────────────▼─────┐
+                                        │        Redis Pub/Sub          │
+                                        │  (cross-instance chat fanout) │
+                                        └───────────┬───────────────────┘
+                                                    │
+                                        ┌───────────▼───────────┐
+                                        │   Kafka / Redpanda    │
+                                        │  Event Bus (optional) │
+                                        └───────────────────────┘
 ```
 
-6. Make sure [kubectl](https://kubernetes.io/docs/tasks/tools/install-kubectl-macos/) is installed.
+### Key Design Decisions
 
-### Windows (WSL)
+| Decision | Rationale |
+|----------|-----------|
+| **Standalone Go modules** | Each service has its own `go.mod`, `main.go`, and `Dockerfile` — they share only a `shared/` library for common types, errors, and middleware. |
+| **Database per service** | No shared databases. Services communicate only via HTTP/gRPC APIs or Kafka events. Strict isolation enforces bounded contexts. |
+| **API Gateway pattern** | Single entry point validates JWT once, then proxies to internal services with `X-User-ID` header. Rate limiting, CORS, and SSL terminate at the edge. |
+| **WebSocket sharded hub** | Chat service uses 32 FNV-hash shards for the client hub, reducing lock contention under high concurrency. |
+| **Choreography-based SAGA** | Multi-service transactions (e.g., match creation → conversation setup) use Kafka events with compensation handlers for rollback. |
 
-This is a step by step guide to install Go on Windows using WSL.
-You can either install via WSL (recommended) or using powershell (not covered, but similar to WSL).
+---
 
-1. Install WSL for Windows from [Microsoft's official website](https://learn.microsoft.com/en-us/windows/wsl/install)
+## 🧩 Services Breakdown
 
-2. Install Docker for Windows from [Docker's official website](https://www.docker.com/products/docker-desktop/)
+### 1. API Gateway `(:8080)`
 
-3. Install Minikube from [Minikube's official website](https://minikube.sigs.k8s.io/docs/)
+| Layer | Detail |
+|-------|--------|
+| **Framework** | Echo v4 (stateless) |
+| **Auth** | JWT validation (Clerk RS256 / dev HS256) |
+| **Purpose** | Central entry point — validates tokens, rate-limits, routes requests |
+| **Key files** | `cmd/api/main.go`, `internal/middleware/auth.go`, `internal/handler/gateway.go` |
 
-4. Install Tilt from [Tilt's official website](https://tilt.dev/)
-
-5. Install Go on Windows using WSL:
-```bash
-# 1. Get the Go binary
-wget https://dl.google.com/go/go1.23.0.linux-amd64.tar.gz
-
-# 2. Extract the tarball
-sudo tar -xvf go1.23.0.linux-amd64.tar.gz
-
-# 3. Move the extracted folder to /usr/local
-sudo mv go /usr/local
-
-# 4. Add Go to PATH (following the steps from the video)
-cd ~
-explorer.exe .
-
-# Open .bashrc file and add following lines at the bottom and save the file.
-export GOROOT=/usr/local/go
-export GOPATH=$HOME/go
-export PATH=$GOPATH/bin:$GOROOT/bin:$PATH
-
-# 5. Verify the installation
-go version
+Routes are registered as reverse proxies to internal services:
+```go
+api.Any("/users/*", proxyTo(cfg.UserServiceURL))
+api.Any("/conversations/*", proxyTo(cfg.ChatServiceURL))
+api.Any("/ws", proxyTo(cfg.ChatServiceURL))
+api.Any("/location/*", proxyTo(cfg.LocationServiceURL))
 ```
 
-6. Make sure [kubectl](https://kubernetes.io/docs/tasks/tools/install-kubectl-macos/) is installed.
+### 2. User Service `(:8081)`
 
-## Run
+| Layer | Detail |
+|-------|--------|
+| **Database** | PostgreSQL 16 |
+| **Auth** | Google OAuth, email/password registration |
+| **APIs** | User CRUD, dating profiles, profile photos, blocking |
+| **Key files** | `internal/service/user_service.go`, `internal/handler/auth_handler.go` |
+
+### 3. Match Service `(:8082)`
+
+| Layer | Detail |
+|-------|--------|
+| **Database** | PostgreSQL 16 |
+| **Purpose** | Swipe matching, discovery algorithm, match state management |
+| **Key files** | `internal/service/match_service.go`, `internal/repository/postgres/match_repo.go` |
+
+### 4. Chat Service `(:8083)`
+
+| Layer | Detail |
+|-------|--------|
+| **Database** | PostgreSQL + Redis |
+| **Real-time** | WebSocket (gorilla/websocket) |
+| **Streaming** | Kafka (optional event bus) |
+| **Purpose** | 1-on-1 & group messaging, presence tracking, WebSocket gateway |
+| **Key files** | `internal/websocket/hub.go` (sharded room hub), `internal/websocket/client.go` |
+
+### 5. Location Service `(:8084)`
+
+| Layer | Detail |
+|-------|--------|
+| **Database** | Redis GEO + PostgreSQL/PostGIS |
+| **Real-time** | WebSocket |
+| **Purpose** | Live coordinate tracking, map posts with pins, nearby discovery |
+| **Key files** | `internal/service/location_service.go`, `internal/websocket/hub.go` |
+
+### 6. Web Frontend `(:3000)`
+
+| Layer | Detail |
+|-------|--------|
+| **Framework** | Next.js 15 (App Router) |
+| **Styling** | Tailwind CSS 3.4 + shadcn/ui |
+| **State** | Zustand (client) + TanStack Query (server) |
+| **Map** | maplibre-gl 5 + react-map-gl 8 (OpenFreeMap tiles) |
+| **Real-time** | Native WebSocket |
+| **Animation** | Framer Motion 12 |
+
+Key components: `MapView` (interactive map with user markers & post pins), `ChatOverlay` (collapsible real-time chat), `CreatePostDrawer`, `ThreadDrawer`, `UsersSidebar`.
+
+### 7. Shared Library `(shared/)`
+
+| Package | Purpose |
+|---------|---------|
+| `pkg/errors/` | Structured `AppError` types (NotFound, BadRequest, etc.) |
+| `pkg/logger/` | JSON structured logging via `log/slog` |
+| `pkg/middleware/jwt.go` | JWT parsing helpers |
+| `pkg/validators/` | Custom go-playground validators |
+| `domain/` | Common domain structs |
+| `proto/user/` | gRPC protobuf definitions |
+
+---
+
+## 💻 Tech Stack
+
+### Backend (Go)
+
+| Layer | Library |
+|-------|---------|
+| **Framework** | [`github.com/labstack/echo/v4`](https://echo.labstack.com) |
+| **PostgreSQL** | [`github.com/jackc/pgx/v5`](https://github.com/jackc/pgx) |
+| **Redis** | [`github.com/redis/go-redis/v9`](https://github.com/redis/go-redis) |
+| **WebSocket** | [`github.com/gorilla/websocket`](https://github.com/gorilla/websocket) |
+| **Kafka** | [`github.com/segmentio/kafka-go`](https://github.com/segmentio/kafka-go) |
+| **gRPC** | [`google.golang.org/grpc`](https://grpc.io) |
+| **JWT** | [`github.com/golang-jwt/jwt/v5`](https://github.com/golang-jwt/jwt) |
+| **Validation** | [`github.com/go-playground/validator/v10`](https://github.com/go-playground/validator) |
+| **Migrations** | [`github.com/golang-migrate/migrate/v4`](https://github.com/golang-migrate/migrate) |
+| **Config** | [`github.com/caarlos0/env/v10`](https://github.com/caarlos0/env) |
+| **Logging** | `log/slog` (stdlib) |
+
+### Frontend (Next.js)
+
+| Layer | Library |
+|-------|---------|
+| **Framework** | Next.js 15 (App Router) |
+| **Styling** | Tailwind CSS 3.4 + shadcn/ui |
+| **Client State** | [Zustand 5](https://github.com/pmndrs/zustand) |
+| **Server State** | [TanStack Query](https://tanstack.com/query) |
+| **Map** | [maplibre-gl 5](https://maplibre.org) + [react-map-gl 8](https://visgl.github.io/react-map-gl) |
+| **Animation** | [Framer Motion 12](https://motion.dev) |
+| **Drawer** | [Vaul](https://github.com/emilkowalski/vaul) |
+
+### Infrastructure
+
+| Component | Technology |
+|-----------|------------|
+| **Orchestration** | Docker Compose (dev) / Kubernetes (prod) |
+| **Databases** | PostgreSQL 16, PostGIS 16-3.4, Redis 7 |
+| **Event Bus** | Kafka 7.7 + ZooKeeper |
+| **CI/CD** | GitHub Actions |
+| **Load Balancing** | Ingress (Kubernetes) / Next.js rewrites (dev) |
+
+---
+
+## 🔄 Data Flow
+
+### Message Send (Real-time WebSocket)
+
+```
+User types message
+       │
+       ▼
+WebSocket ──► API Gateway ──► Chat Service
+                                    │
+                              ┌─────▼─────┐
+                              │  Validate  │
+                              │  & Save    │──► PostgreSQL (persist)
+                              └─────┬─────┘
+                                    │
+                         ┌──────────▼──────────┐
+                         │  Fan-out via Hub     │
+                         │  (single marshal)    │
+                         │  + Redis PubSub for  │
+                         │  cross-instance      │
+                         └──────────┬──────────┘
+                                    │
+                    ┌───────────────┼───────────────┐
+                    │               │               │
+              ┌─────▼─────┐   ┌─────▼─────┐   ┌─────▼─────┐
+              │ Local     │   │ Redis      │   │ Kafka     │
+              │ Room      │   │ PubSub     │   │ (optional)│
+              │ Clients   │   │ (other     │   │           │
+              │           │   │  instances)│   │           │
+              └───────────┘   └───────────┘   └───────────┘
+```
+
+### Auth Flow
+
+```
+1. User visits /login
+       │
+       ▼
+2a. Google OAuth → user-service → Google → callback → JWT
+    OR
+2b. Simulated login → frontend generates HS256 JWT
+       │
+       ▼
+3. Token stored in localStorage
+4. WebSocket connects with ?token= query param
+5. API Gateway validates token → sets X-User-ID header → proxies request
+```
+
+### Map Post Flow
+
+```
+User creates post via UI
+       │
+       ▼
+POST /v1/posts ──► API Gateway ──► Location Service
+                                          │
+                                    ┌─────▼─────┐
+                                    │ Save to   │
+                                    │ PostGIS   │
+                                    └───────────┘
+       │
+       ▼
+Other users see pin on map (GET /v1/posts?lat=...&lng=...&radius=...)
+```
+
+---
+
+## 🚀 Getting Started
+
+### Prerequisites
+
+- **Go** 1.22+
+- **Docker** & **Docker Compose**
+- **Node.js** 20+ (for the frontend)
+- **kubectl** (for Kubernetes deployment)
+- **Tilt** (optional, for local K8s dev)
+
+### Quick Start (Docker Compose)
 
 ```bash
+# Clone the repository
+git clone git@github.com:nur-farhan-bubun/Go-Bubuns_Serious_project.git
+cd microservices-go-starter
+
+# Initialize Go workspace (one time)
+go work init
+go work use ./api-gateway ./user-service ./match-service ./chat-service ./location-service ./shared
+
+# Start all services + infrastructure
+make up
+
+# Run database migrations
+make migrate-up
+
+# Check all services are healthy
+make logs
+```
+
+### Start Frontend
+
+```bash
+cd web
+npm install
+npm run dev
+```
+
+Open [http://localhost:3000](http://localhost:3000) — the Next.js rewrites proxy API calls to the backend automatically.
+
+### Run Individual Services (for debugging)
+
+```bash
+# Run a specific service locally
+make run-user-service
+
+# Or directly
+cd user-service && go run ./cmd/api
+```
+
+---
+
+## 📜 Makefile Commands
+
+| Command | Description |
+|---------|-------------|
+| `make build-all` | Build all Go services |
+| `make build-<service>` | Build a specific service |
+| `make run-all` | Start all services via Docker Compose |
+| `make run-<service>` | Run a service locally |
+| `make up` | `docker compose up -d` |
+| `make down` | `docker compose down` |
+| `make logs` | Tail Docker Compose logs |
+| `make test-all` | Run all tests across services |
+| `make test-<service>` | Run tests for a specific service |
+| `make vet-all` | Run `go vet` on all modules |
+| `make tidy-all` | Run `go mod tidy` on all modules |
+| `make migrate-up` | Apply all pending migrations |
+| `make migrate-down` | Roll back the last migration |
+| `make docker-build-all` | Build all Docker images |
+| `make clean` | Remove build artifacts |
+| `make compile-proto` | Compile gRPC protobuf definitions |
+
+---
+
+## ☸️ Deployment
+
+### Local Kubernetes (Minikube / Docker Desktop)
+
+```bash
+# Using Tilt (hot-reload)
 tilt up
-```
 
-## Monitor
-
-```bash
+# Monitor pods
 kubectl get pods
-```
 
-or
-
-```bash
+# Or with Minikube
 minikube dashboard
 ```
 
-## Deployment (Google Cloud example)
-It's advisable to first run the steps manually and then build a proper CI/CD flow according to your infrastructure.
-
-## 0. Environments
-```bash
-REGION: europe-west1 # change according to your location
-PROJECT_ID: <your-gcp-project-id>
-```
-
-## 1. Add secrets.yaml file to the production folder
-
-Production folder needs to contain a secrets.yaml for the production environment, you can just copy secrets from the development folder for now.
-
-## 2. Build Docker Images
-Build all docker images and tag them accordingly to push to Artifact Registry.
-```bash
-# Build the Api gateway 
-docker build -t {REGION}-docker.pkg.dev/{PROJECT_ID}/ride-sharing/api-gateway:latest --platform linux/amd64 -f infra/production/docker/api-gateway.Dockerfile .
-
-# Build the Driver service 
-docker build -t {REGION}-docker.pkg.dev/{PROJECT_ID}/ride-sharing/driver-service:latest --platform linux/amd64 -f infra/production/docker/driver-service.Dockerfile .
-
-# Build the Trip service 
-docker build -t {REGION}-docker.pkg.dev/{PROJECT_ID}/ride-sharing/trip-service:latest --platform linux/amd64 -f infra/production/docker/trip-service.Dockerfile .
-
-# Build the Payment service 
-docker build -t {REGION}-docker.pkg.dev/{PROJECT_ID}/ride-sharing/payment-service:latest --platform linux/amd64 -f infra/production/docker/payment-service.Dockerfile .
-```
-
-## 3. Create a Artifact Registry repository
-Go to Google Cloud > Artifact Registry and manually create a docker repository to host your project images. 
-
-
-## 4. Push the Docker images to artifact registry
-
-Docker push the images. 
-If you get errors pushing:
-1. Make sure to `gcloud login`, select the right project or even `gcloud init`.
-2. Configure artifact on your docker config `gcloud auth configure-docker {REGION}-docker.pkg.dev` [Docs](https://cloud.google.com/artifact-registry/docs/docker/pushing-and-pulling#cred-helper)
-
-
-## 5. Create a Google Kubernetes Cluster
-You can either run a `gcloud` command to start a GKE cluster or manually create a cluster on the UI (recommended).
-
-## 6. Update manifests files
-
-Connect to your remote cluster and apply the kubernetes manifests.
+### Production (Google Cloud Example)
 
 ```bash
-gcloud container clusters get-credentials ride-sharing --region {REGION}--project {PROJECT_ID}
+# 1. Build and push Docker images to Artifact Registry
+docker build -t {REGION}-docker.pkg.dev/{PROJECT_ID}/ride-sharing/api-gateway:latest \
+  --platform linux/amd64 -f api-gateway/Dockerfile .
+
+# 2. Create a GKE cluster
+# 3. Apply Kubernetes manifests
+kubectl apply -f k8s/Db/       # Databases (PostgreSQL, Redis)
+kubectl apply -f k8s/           # Services (API Gateway, etc.)
 ```
 
-Next, upload each manifest by hand to make sure the correct order is maintained.
+The [`.github/workflows/prod-cicd.yml`](.github/workflows/prod-cicd.yml) contains the CI/CD pipeline configuration.
 
-```bash
-# First, apply the app-config and secrets
-kubectl apply -f infra/production/k8s/app-config.yaml
-kubectl apply -f infra/production/k8s/secrets.yaml
+---
 
-# Jaeger
-kubectl apply -f infra/production/k8s/jaeger-deployment.yaml
+## 📁 Project Structure
 
-# RabbitMQ
-kubectl apply -f infra/production/k8s/rabbitmq-deployment.yaml
-
-# Wait for both Jaeger and RabbitMQ to be running successfully
-
-# Then, apply the services
-kubectl apply -f infra/production/k8s/api-gateway-deployment.yaml
-# Wait until the API is up and then do the next and so on...
-kubectl apply -f infra/production/k8s/driver-service-deployment.yaml
-kubectl apply -f infra/production/k8s/trip-service-deployment.yaml
-kubectl apply -f infra/production/k8s/payment-service-deployment.yaml
+```
+microservices-go-starter/
+├── docker-compose.yml        # Local dev: all services + infrastructure
+├── go.work                   # Go workspace (links all modules)
+├── Makefile                  # Build, test, migration, deployment commands
+├── Tiltfile                  # Local K8s development (hot-reload)
+│
+├── api-gateway/              # Edge: JWT validation, routing, rate limiting
+├── user-service/             # Users, profiles, auth, blocking
+├── match-service/            # Swipes, matches, discovery
+├── chat-service/             # Real-time messaging, presence, WebSocket hub
+├── location-service/         # Geo tracking, map posts, nearby queries
+├── shared/                   # Common library (errors, logger, middleware)
+│
+├── web/                      # Next.js 15 frontend
+├── docs/                     # Architecture documentation
+├── infra/                    # Dockerfiles & K8s manifests
+├── k8s/                      # Kubernetes deployment configs
+├── proto/                    # Protobuf definitions
+└── scripts/                  # Utility scripts
 ```
 
-If you need to redeploy you can use the same command above or just `kubectl apply -f infra/production/k8s`
-Sometimes pods might need to be deleted for new ones to be deployed.
+---
 
-```bash
-kubectl get pods
-kubectl delete pod <pod-name>
+## 🤝 Contributing
 
-# or for all deployments
-kubectl rollout restart deployment
-```
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
-## 7. Enjoy!
-```bash
-Get the External IP from the api-gateway
-kubectl get services
-```
+### Development Guidelines
 
-Go back to locally developing your project by changing kubernetes context
-```bash
-kubectl config get-contexts
+- Each service is a standalone Go module — add dependencies via `go mod tidy` in that service's directory
+- Run `make vet-all` and `make test-all` before pushing
+- Follow the database-per-service rule: no cross-service table joins
+- Use structured `log/slog` for all logging
+- Keep WebSocket read/write pumps as goroutines with backpressure channels
 
-# For Docker Desktop
-kubectl config use-context docker-desktop
+---
 
-# OR for Minikube
-kubectl config use-context minikube
-```
+## 📄 License
 
-## Adding HTTPS to your API
-0. Reserve a static IP in GCP:
-Go to the Google Cloud Console → VPC Network → External IP addresses.
-Click "RESERVE STATIC ADDRESS".
-Name it api-gateway-ip (to match your annotation).
-Choose the same region as your GKE cluster (or "global" if using a global Ingress).
+This project is licensed under the MIT License.
 
-Confirm your IP exists:
-```bash
-gcloud compute addresses list
-```
+---
 
-1. Add the ingress deployment
-2. Change from LoadBalancer to ClusterIP
-3. Apply the config
-```bash
-kubectl apply -f infra/production/k8s/api-gateway-ingress.yaml
-kubectl apply -f infra/production/k8s/api-gateway-deployment.yaml
-```
-4. Get the IP address: 
-```bash
-kubectl get ingress api-gateway-ingress
-```
-
-You should also wait for SSL certificate to be provisioned. Check the status:
-
-```bash
-kubectl describe managedcertificate api-gateway-cert
-```
-
-Once the certificate is provisioned (you'll see a "Provisioning" status change to "Active")
-
-5. The Ingress will automatically provision a Google-managed SSL certificate for the IP address. You can access your API using:
-```bash
-https://<IP_ADDRESS>
-```
-
-Note: Since this is using a self-signed certificate, browsers will show a security warning. This is normal and expected. You can:
-Accept the warning in your browser (not recommended for production)
-Use a proper domain name (recommended for production)
+<div align="center">
+  <sub>Built with Go, Next.js, and ☕</sub>
+</div>
